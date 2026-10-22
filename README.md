@@ -41,10 +41,7 @@ agent-kit/
 │       ├── policy.mjs      # pure helpers (unit-tested, no opencode imports)
 │       ├── README.md       # enforcement, precedence, opt-out, limitations
 │       └── package.json    # plugin manifest (no deps; host provides @opencode/plugin)
-├── pi/                     # Pi harness config + installer (models.json, settings.json, install.sh, key.env.example)
 ├── scripts/
-│   ├── bootstrap.sh        # fresh-device install: opencode + Pi + key bootstrap + health check
-│   ├── check-pi.sh         # read-only Pi + P8 health check
 │   ├── check-secrets.sh
 │   ├── measure-tokens.mjs  # char/token budget reporter
 │   └── tailshare           # tailnet link helper (-> ~/.local/bin/tailshare)
@@ -73,20 +70,6 @@ OpenCode/T3 Code runs under before starting it: the HTTP route
 without it, and the `beeper_ssh` fallback then carries the work.
 
 Role resolution is `--role` flag > `~/.config/agent-kit/host.json` > `plain`.
-
-### Install on a new device
-
-```sh
-bash scripts/bootstrap.sh    # or: bash scripts/bootstrap.sh --role beeper-client
-```
-
-One idempotent script: applies the OpenCode config (`./install.sh --apply`),
-bootstraps the Pi key at `~/.pi/agent/key.env` (seeds from
-`~/.config/opencode/secrets/p8-api-key` if present, otherwise prompts — the
-key is never printed or stored in the repo), installs the Pi harness from
-`pi/` (`pi/install.sh --make-default`), restores the `kimi-k3:cloud` default,
-and finishes with `scripts/check-pi.sh`. Needs `node`, `python3` 3.10+ or
-`uv`, and `bun`. See `pi/README.md` and `docs/PI_CONFIG.md`.
 
 ### What it links
 
@@ -146,31 +129,6 @@ python3 skills/<skill>/scripts/<script>.py --help
 `tesseract` and `pandoc` are system binaries. `beeper` needs the local
 forward and `BEEPER_MCP_TOKEN`, or an SSH-reachable Beeper host for the
 fallback; `workstation` expects an SSH-reachable host. See their `SKILL.md`.
-
-## P8 provider
-
-p8-agent (reliable, `https://ollama.ecitis.org/agent/v1`) and p8-agent-fast
-(responsive, `/agent-fast/v1`) are OpenAI-compatible, keyed by
-`{file:~/.config/opencode/secrets/p8-api-key}` (mode 600), timeout 180000 ms,
-user-stated unmetered with no token limit. p8 outranks opencode free and paid
-Go for any selectable slot. Role ladders (implementation/build, planning/audit,
-default/general) live in `AGENTS.md` and `docs/p8-provider.md`. The top-level
-default and Mercenary now run p8 (`p8-agent/router/agent` and
-`p8-agent/nemotron-3-ultra`). Paid escalation IDs are unchanged.
-
-## Pi (pi-coding-agent)
-
-Pi's P8 config and installer live in this repo at `pi/` (single source of
-truth; no secret ships — only `pi/key.env.example`). Installed hosts keep the
-config dir at `~/.pi/agent/` (`models.json`, `settings.json`, `key.env`,
-`p8-launch.py`); defaults `p8-agent` / `kimi-k3:cloud` with enabled models
-`p8-agent/kimi-k3:cloud` and `p8-agent/router/agent`. Key handling uses a
-separate `P8_ROUTER_API_KEY` in `key.env` (mode 600); `models.json` references
-`$P8_ROUTER_API_KEY` only. Install/refresh on a fresh device:
-`bash scripts/bootstrap.sh`; update the catalog later with
-`python3 pi/refresh-models.py refresh`. Health check: `scripts/check-pi.sh`;
-PATH caveat: prefer `~/.local/bin/pi` over a bare `pi`. Pi reads `AGENTS.md`
-from its agent dir and ancestors. See `docs/PI_CONFIG.md`.
 
 ## Token budget
 

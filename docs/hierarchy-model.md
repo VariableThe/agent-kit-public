@@ -156,10 +156,8 @@ dispatch.
 `MODEL_ROUTING` in `policy.mjs` assigns each routed worker a class, and
 `resolveModelRouting` is the single authority for what a dispatch runs.
 
-- **pinned** (bishop, knight, p8-worker): always the configured model. A different input is
-  corrected, never honored.
-  Bishop and Knight are pinned to unmetered p8 models (Bishop `p8-agent/deepseek-v4-pro`,
-  Knight `p8-agent/deepseek-v4-pro`, p8-worker `p8-agent/gemma4:31b`); the config remains the source of truth.
+- **pinned** (bishop, knight): always the configured model. A different input is
+  corrected, never honored. The config remains the source of truth.
 - **explicit** (mercenary): any non-empty input model is honored; an omitted one
   falls back to the configured model and is corrected.
 - **escalation** (witch, mage, grand-bishop, knight-commander): only the declared
@@ -171,8 +169,8 @@ input is honored, an omitted one defaults to the configured model. An agent with
 neither is `known: false` and its input is left alone.
 
 The config is read live (`loadAgentModels`, invalidated on mtime and size) and
-remains the source of truth. The bishop/knight/p8-worker fallbacks are `p8-agent/deepseek-v4-pro`,
-`p8-agent/deepseek-v4-pro`, and `p8-agent/gemma4:31b` (`PINNED_MODEL_FALLBACKS`), used when the config declares no model for that agent.
+remains the source of truth. A pinned agent with no configured model has no
+fallback pin: the dispatch input is left to the caller.
 
 Escalation agents are no longer exempt from model checking. They may run only
 their declared paid models, with Witch's declared fallback among them, so a
@@ -191,7 +189,7 @@ UTC+05:30, so 04:00Z), no weekday filter, `enabled=1`,
 succeeded.
 
 Revision 3 of the prompt lives in `docs/scheduled-daily-model-check/after.txt`
-(7,790 bytes) with p8-first rotation and a Pi preflight. The stored task row
+(7,790 bytes). The stored task row
 was updated 2026-10-21 and now holds revision 3 (stored prompt is
 byte-identical to `after.txt` modulo the trailing newline).
 

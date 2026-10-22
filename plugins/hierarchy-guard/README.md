@@ -90,11 +90,10 @@ longer reads it.
 T3 Code runs its primary thread as `build` and does apply that agent's
 configured system text. Passing the intended worker to the subagent tool's
 `agent` parameter **does** set the child session's identity — enforcement then
-matches that identity. Observed today: `bishop` ran as `bishop` on
-`p8-agent/beam` with shell/edit/glob denied by this plugin, and `knight`
-ran as `knight` on `p8-agent/kimi-k3:cloud` with shell/edit/execute
-working. So a delegated session is policed as the agent it was asked to be;
-only the primary T3 Code thread is fixed at `build`.
+matches that identity. Observed today: `bishop` ran as `bishop` with
+shell/edit/glob denied by this plugin, and `knight` ran as `knight` with
+shell/edit/execute working. So a delegated session is policed as the agent it
+was asked to be; only the primary T3 Code thread is fixed at `build`.
 
 ## Subagent model routing
 
@@ -105,8 +104,8 @@ listens on `tool.hook("execute.before")` for that tool and routes the child by
 the agent's declared class in `MODEL_ROUTING` (`policy.mjs`), reading the
 configured model from the live opencode config (`agents.<name>.model`):
 
-- `pinned` (bishop, knight, p8-worker): always the configured free model. A different
-  input is corrected.
+- `pinned` (bishop, knight): always the configured model. A different input is
+  corrected.
 - `explicit` (mercenary): any non-empty input model is honored; an omitted one
   defaults to the configured model.
 - `escalation` (witch, mage, grand-bishop, knight-commander): only the declared

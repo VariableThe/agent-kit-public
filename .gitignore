@@ -5,12 +5,8 @@ auth.json
 # Node (the Beeper bridge)
 node_modules/
 bun.lock
-!pi/bun.lock
 npm-debug.log*
 *.log
-
-# Pi secrets — only key.env.example is committed; the real key lives outside git.
-pi/key.env
 
 # Installer-generated config backups
 opencode.json.bak-*

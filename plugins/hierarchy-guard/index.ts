@@ -35,7 +35,7 @@
  * inherits the parent (Monarch/`build`) model. On
  * `tool.hook("execute.before")` for that tool, the child model is routed by the
  * agent's declared class in MODEL_ROUTING (policy.mjs): pinned workers are
- * corrected to their configured free model, explicit workers may be given any
+ * corrected to their configured model, explicit workers may be given any
  * non-empty model, and paid escalation agents accept only their allowed paid
  * models. This is a corrective pin, not a deny. A target that the loaded policy
  * does not declare, or that may itself delegate, is neutered instead. T3's
@@ -54,10 +54,6 @@ import {
   resolveNestedDelegation,
   resolveSubagentInput,
   shouldNeuterExecute,
-  P8_PINNED_LADDER,
-  isP8Candidate,
-  probeP8ModelAvailability,
-  p8ModelAvailabilityCache,
 } from "./policy.mjs";
 
 const OFF_ENV = "HIERARCHY_GUARD_OFF";
@@ -246,23 +242,6 @@ export default Plugin.define({
       if (isDisabled(process.env)) return;
       const configPath = resolveConfigPath(process.env);
 
-      // --- P8 model availability background refresher (fire-and-forget) ---
-      let refreshFailureLogged = false;
-      const p8LadderSet = new Set(P8_PINNED_LADDER);
-      async function refreshP8Availability() {
-        try {
-          const configured = loadAgentModels(configPath);
-          const models = new Set(p8LadderSet);
-          for (const m of configured.values()) if (isP8Candidate(m)) models.add(m);
-          await Promise.allSettled([...models].map(m => probeP8ModelAvailability(m, { timeoutMs: 2000, ttlMs: 60000 })));
-        } catch (e) {
-          if (!refreshFailureLogged) { console.error(JSON.stringify({plugin:"hierarchy-guard",event:"p8-availability-refresh-error",reason:e&&e.message?e.message:String(e)})); refreshFailureLogged=true; }
-        }
-      }
-      void refreshP8Availability();
-      const refreshTimer = setInterval(() => { void refreshP8Availability(); }, 60000);
-      refreshTimer.unref?.();
-
       const rulesFor = (agent: unknown) => {
         if (typeof agent !== "string" || agent.length === 0) return undefined;
         return loadPolicy(configPath).get(agent);
@@ -367,7 +346,7 @@ export default Plugin.define({
             }
             const input = event.input;
             if (!input || typeof input !== "object") return;
-            const result = resolveSubagentInput(input, loadAgentModels(configPath), policy, { cache: p8ModelAvailabilityCache });
+            const result = resolveSubagentInput(input, loadAgentModels(configPath), policy);
             if (!result) return; // nothing declared to correct
             try {
               (event as { input?: unknown }).input = result.input;

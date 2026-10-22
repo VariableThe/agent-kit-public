@@ -26,8 +26,8 @@ before ~9,603 chars (~2,401 tokens), after ~5,607 chars (~1,402 tokens).
 ## Moved out of the injected context
 
 Escalation policy, routing, depth, and incident history now live in
-`docs/hierarchy-model.md` and `docs/p8-provider.md` instead of being repeated
-in every system prompt. AGENTS.md carries the normative rules once.
+`docs/hierarchy-model.md` instead of being repeated in every system prompt.
+AGENTS.md carries the normative rules once.
 
 ## Enforced budgets
 
