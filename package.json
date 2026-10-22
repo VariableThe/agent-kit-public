@@ -1,0 +1,16 @@
+{
+  "name": "agent-kit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenCode policy plugin, shared skills, scripts, docs, tests, install.sh, and Pi harness config templates.",
+  "type": "module",
+  "bin": {},
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "check": "node --check plugins/hierarchy-guard/policy.mjs && node --check plugins/tailshare/rewrite.mjs",
+    "test": "node --test test/hierarchy-guard-policy.test.mjs test/readonly-shell-allowlist.test.mjs test/tailshare-rewrite.test.mjs"
+  },
+  "license": "MIT"
+}

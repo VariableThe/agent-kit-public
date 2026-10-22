@@ -1,0 +1,17 @@
+{
+  "lastChangelogVersion": "1.3.0",
+  "defaultProvider": "p8-agent",
+  "defaultModel": "kimi-k3:cloud",
+  "$schema": "https://pi.dev/schemas/settings.schema.json",
+  "cacheWarming": "off",
+  "compaction": {
+    "reserveTokens": 8192,
+    "keepRecentTokens": 8192
+  },
+  "enableInstallTelemetry": false,
+  "enableAnalytics": false,
+  "enabledModels": [
+    "p8-agent/kimi-k3:cloud",
+    "p8-agent/router/agent"
+  ]
+}
