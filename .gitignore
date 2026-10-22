@@ -1,0 +1,31 @@
+# Local secrets — create from service.json.example, never commit the real file.
+service.json
+auth.json
+
+# Node (the Beeper bridge)
+node_modules/
+bun.lock
+!pi/bun.lock
+npm-debug.log*
+*.log
+
+# Pi secrets — only key.env.example is committed; the real key lives outside git.
+pi/key.env
+
+# Installer-generated config backups
+opencode.json.bak-*
+*.bak-*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Generated skill output
+*.pdf
+*.png
+*.jpg
+*.wav
+
+# macOS
+.DS_Store

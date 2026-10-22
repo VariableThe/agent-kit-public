@@ -1,0 +1,16 @@
+{
+  "name": "tailshare",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Share local-service links tailnet-reachably: system-prompt hint plus loopback-URL rewrite for shell tool results backed by live tailscale serve mappings.",
+  "main": "index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "scripts": {
+    "test": "node --test rewrite.test.mjs"
+  },
+  "dependencies": {
+    "@opencode/plugin": "2.0.29"
+  }
+}

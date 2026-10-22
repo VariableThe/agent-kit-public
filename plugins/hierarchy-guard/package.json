@@ -1,0 +1,10 @@
+{
+  "name": "hierarchy-guard",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Re-enforce each agent's configured permission rules after client/session rules resolve: the permission.evaluate hook can only tighten, never loosen.",
+  "main": "index.ts",
+  "exports": {
+    ".": "./index.ts"
+  }
+}
