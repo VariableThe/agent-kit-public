@@ -13,7 +13,7 @@ repos and installs them all with one script:
   fallback route to Beeper Desktop; the primary route is remote HTTP.
 
 It consolidates the former `agent-config`, `agent-skills`, and
-`beeper-ecocsystem-wide` repos. Everything is symlinked back into place, so
+`beeper-ecosystem` repos. Everything is symlinked back into place, so
 this repo stays the single source of truth; edit it here, re-run the
 installer, and every machine follows.
 
