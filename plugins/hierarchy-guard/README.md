@@ -78,7 +78,7 @@ The gate is the environment, not the client name: `isT3CodeHarness` returns
 true when `process.env` has any own enumerable key beginning `T3CODE_` with a
 non-empty string value (prefix-based, so a renamed `T3CODE_*` variable still
 detects the harness). Detection came from environment evidence — a T3 Code
-session exposes `T3CODE_CLI_PATH=/home/decon/.t3/bin/t3` and other `T3CODE_*`
+session exposes `T3CODE_CLI_PATH=/home/<user>/.t3/bin/t3` and other `T3CODE_*`
 keys, while native OpenCode CLI/service sessions expose none. Under T3 Code,
 agents whose policy denies delegation keep the neutering, and
 `permission.hook("evaluate")` remains the authoritative enforcer regardless.

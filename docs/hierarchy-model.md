@@ -182,7 +182,7 @@ model grounds.
 
 Exactly one scheduled task exists: id
 `scheduled-task:83ceb38b-2cb4-42c1-b166-8d475f8a8f98`, title "Daily model
-check", project `decon` (`/home/decon`), `fixed_time` 09:30 local (IST,
+check", project `example` (`/home/<user>`), `fixed_time` 09:30 local (IST,
 UTC+05:30, so 04:00Z), no weekday filter, `enabled=1`,
 `runtime_mode=full-access`, `interaction_mode=default`, model
 `opencode/deepseek-v4.1-flash-free`. `run_count=4`; the last run, 2026-10-20,

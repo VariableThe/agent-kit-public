@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT = path.join(HERE, "..", "scripts", "beeper-bot.mjs");
 const PROFILES = path.join(HERE, "..", "profiles");
-const OWN_SENDER_ID = "@the-variable:beeper.com";
+// Mirrors scripts/beeper-bot.mjs OWN_SENDER_ID so the self-match assertion holds.
+const OWN_SENDER_ID = "@your-user-id:beeper.com";
 
 // Import the engine without starting the bridge: the entrypoint guard
 // honours BEEPER_BOT_NO_MAIN (legacy BEEPER_NOTIFY_NO_MAIN). Env is set
@@ -201,7 +202,7 @@ test("checkLiveRunConflict prunes a stale dead-pid entry and proceeds", () => {
 });
 
 test("compileDenyPattern: plain substring vs /body/flags regex", () => {
-  assert.equal(bot.compileDenyPattern("asus"), "asus");
+  assert.equal(bot.compileDenyPattern("arch"), "arch");
   // Path-like "/etc/shadow" has no regex syntax: stays a substring.
   assert.equal(bot.compileDenyPattern("/etc/shadow"), "/etc/shadow");
   const re = bot.compileDenyPattern("/\\.local/i");
@@ -228,10 +229,10 @@ test("guardReply deflects deny-pattern hits and passes clean text", () => {
   // assertions prove — are unchanged.
   const keyPrefix = "sk" + "-";
   const prof = {
-    denyPatterns: ["asus", bot.compileDenyPattern("/" + keyPrefix + "[A-Za-z0-9_-]{16,}/")],
+    denyPatterns: ["arch", bot.compileDenyPattern("/" + keyPrefix + "[A-Za-z0-9_-]{16,}/")],
     deflect: "ha, no clue bro",
   };
-  const hit = bot.guardReply("my asus box rocks", prof);
+  const hit = bot.guardReply("my arch box rocks", prof);
   assert.equal(hit.final, "ha, no clue bro");
   assert.ok(hit.denied);
   const reHit = bot.guardReply("key " + keyPrefix + "abcdefgh12345678 here", prof);
