@@ -115,10 +115,12 @@ plus self-contained scripts. They run on-device; no file leaves the machine.
 | `data-csv` | XML / Apple plist to CSV | stdlib only |
 | `audio-transcribe` | speech to text (Whisper) | `faster-whisper` |
 | `notes-to-pdf` | normalize NotebookLM Markdown, build HTML/PDF | `pandoc` binary |
+| `nextcloud` | upload, download, read, edit, delete, share-link Nextcloud files | stdlib only |
 | `beeper-collab` | keep a collaborator posted over Beeper, read replies back | stdlib only |
 | `beeper-bot` | auto-reply bot on a named chat for a bounded duration | node, `ssh`, `opencode` CLI |
 | `beeper` | operate Beeper Desktop across messaging networks (HTTP primary, ssh fallback) | the local forward + `BEEPER_MCP_TOKEN`; node, `ssh` for the fallback |
 | `workstation` | offload heavy builds / GPU jobs to a bigger machine over SSH | `ssh`, `tailscale` |
+| `tailnet-transfer` | move files across the tailnet (Taildrop, rsync/scp, HTTP serve) | stdlib only; `tailscale`, `rsync`, `tailshare` |
 | `t3-thread-orchestration` | spawn, monitor, and follow up on independent top-level T3 threads | the T3 Code MCP server |
 
 ```sh
