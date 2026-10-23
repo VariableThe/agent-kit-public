@@ -122,6 +122,7 @@ plus self-contained scripts. They run on-device; no file leaves the machine.
 | `workstation` | offload heavy builds / GPU jobs to a bigger machine over SSH | `ssh`, `tailscale` |
 | `tailnet-transfer` | move files across the tailnet (Taildrop, rsync/scp, HTTP serve) | stdlib only; `tailscale`, `rsync`, `tailshare` |
 | `t3-thread-orchestration` | spawn, monitor, and follow up on independent top-level T3 threads | the T3 Code MCP server |
+| `unslop` | Remove AI writing patterns from prose; de-AI text | none (content-only) |
 
 ```sh
 pip install -r requirements.txt        # Python deps
