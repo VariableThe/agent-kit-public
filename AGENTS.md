@@ -24,8 +24,8 @@ Applies to every project/session. Project-local AGENTS.md overrides; user instru
 - Be specific/contextual, never generic. No filler in user-facing copy. No hollow UI backed by no data/endpoint. Taste: generate options, reject structurally, keep survivors.
 
 ## Subagent Model Enforcement
-Routing classes in `plugins/hierarchy-guard/policy.mjs`: pinned Bishop/Knight `p8-agent/deepseek-v4-pro`, p8-worker `p8-agent/gemma4:31b`; Mercenary explicit; paid escalation declared only.
-- Native subagent: Bishop `p8-agent/deepseek-v4-pro`, Knight `p8-agent/deepseek-v4-pro`, p8-worker `p8-agent/gemma4:31b`; pass explicit `agent`+`model`; plugin pins; abort+report if unverifiable.
+Routing classes in `plugins/hierarchy-guard/policy.mjs`: Bishop/Knight pinned to their configured model; Mercenary explicit; paid escalation declared only.
+- Native subagent: pass explicit `agent`+`model`; the plugin pins Bishop/Knight to their configured model; abort+report if unverifiable.
 - T3 `functions.subagent`: explicit `agent`+exact configured `model`.
 - T3 `delegate_task`: set `target.providerInstanceId`+`target.model`; verify runtime child; abort+report if unverifiable.
 - Plugin pins native subagent only; T3 app-owned tools not hook-visible.
@@ -48,18 +48,8 @@ Routing classes in `plugins/hierarchy-guard/policy.mjs`: pinned Bishop/Knight `p
 - Report PR link.
 
 ## Escalation Ladder
-- A) Normal: Bishop plans, Knight implements, both on configured p8 pins.
+- A) Normal: Bishop plans, Knight implements, both on their configured models.
 - B) On CONFIRMED capacity failure (HTTP 429, rate-limit message, quota error): retry worker once after retry window, then hand unfinished task to Mercenary with a verified free model, passing plan, repo state, completed work, verbatim errors, remaining criteria; no parallel workers on same files.
 - C) Paid Muse Spark escalation only when free path stalled (Mercenary tried >=2 distinct free models, or >=3 consecutive capacity failures across Bishop/Knight/Mercenary); state reason if earlier; route planning to grand-bishop, implementation to knight-commander.
 - D) Mage (opencode-go/glm-5.3) only for genuinely hard reasoning/refactoring/debugging after free attempts, or when paid Muse Spark path cannot solve it.
 - Error classification: auth, permission, missing-model, config, network/server without rate-limit evidence, and real test failures are NOT capacity failures; diagnose first. Never fall back to paid silently. Record paid invocations with agent id, model id, reason, work, tests.
-
-## P8-First Model Policy
-- Preferred providers: `p8-agent` then `p8-agent-fast` (unmetered, no token limit; key `{file:~/.config/opencode/secrets/p8-api-key}`; endpoints `/agent/v1`, `/agent-fast/v1`). p8 outranks opencode free/paid Go.
-- Role ladders (try next on failure):
-  - Implementation/build: `p8-agent/deepseek-v4-pro`, `p8-agent/gemma4:31b`, `p8-agent/nemotron-3-ultra`, `p8-agent/kimi-k3:cloud`, `p8-agent/qwen3.6:27b-coding`, `p8-agent/router/agent`.
-  - Planning/audit: `p8-agent/deepseek-v4-pro`, `p8-agent/nemotron-3-ultra`, `p8-agent/kimi-k3:cloud`, `p8-agent/router/agent`.
-  - Default/general: `p8-agent/deepseek-v4-pro`, then `p8-agent/gemma4:31b`.
-- Failed fitness -> next model. 429/rate-limit on p8 is capacity failure, not provider failure.
-- Paid escalation IDs stay exactly declared; never silently replaced.
-- Rationale/incident history: `docs/hierarchy-model.md`.

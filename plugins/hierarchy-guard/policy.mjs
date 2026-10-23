@@ -440,8 +440,7 @@ export function isModelGatedSubagent(agentName) {
 }
 
 /* Model routing classes.
- * `pinned` workers always run the configured model, and the config pins them to
- * free models, so a mistaken input cannot spend money. `explicit` workers may be
+ * `pinned` workers always run the configured model. `explicit` workers may be
  * given any non-empty model by the caller. `escalation` workers are paid, so
  * only the listed paid models are honored; anything else falls back to the
  * configured model. Routing answers "which model", never "may this run" — a
@@ -449,7 +448,6 @@ export function isModelGatedSubagent(agentName) {
 export const MODEL_ROUTING = {
   bishop: { class: "pinned" },
   knight: { class: "pinned" },
-  "p8-worker": { class: "pinned" },
   mercenary: { class: "explicit" },
   witch: { class: "escalation", allowed: ["opencode-go/deepseek-v4-pro", "opencode-go/gpt-5.6-luna"] },
   mage: { class: "escalation", allowed: ["opencode-go/glm-5.3"] },
@@ -457,39 +455,13 @@ export const MODEL_ROUTING = {
   "knight-commander": { class: "escalation", allowed: ["opencode-go/muse-spark-1.3-contributor"] },
 };
 
-/** Pins used when the config declares no model; config always wins when present. */
-const PINNED_MODEL_FALLBACKS = {
-  bishop: "p8-agent/deepseek-v4-pro",
-  knight: "p8-agent/deepseek-v4-pro",
-  "p8-worker": "p8-agent/gemma4:31b",
-};
-
-export const P8_PINNED_LADDER = ["p8-agent/deepseek-v4-pro", "p8-agent/gemma4:31b", "p8-agent/nemotron-3-ultra", "p8-agent/kimi-k3:cloud", "p8-agent/router/agent"];
-
-const P8_PINNED_LADDERS = new Map([
-  ["bishop", [...P8_PINNED_LADDER]],
-  ["knight", [...P8_PINNED_LADDER]],
-  ["p8-worker", [...P8_PINNED_LADDER]],
-]);
-
-export function getPinLadder(agent) {
-  if (typeof agent === "string" && Array.isArray(P8_PINNED_LADDERS[agent])) {
-    return [...P8_PINNED_LADDERS[agent]];
-  }
-  return [...P8_PINNED_LADDER];
-}
-
-export function p8LadderFor(agent) {
-  return getPinLadder(agent);
-}
-
 /**
  * Resolve the model a dispatch to `agentName` should run under. `known:false`
  * means the agent has neither a routing class nor a configured model, so the
  * caller leaves the input alone. `corrected` means the caller must apply
  * `model`; `reason` names the rejected value when one was corrected.
  */
-export function resolveModelRouting(agentName, inputModel, configuredModels, options) {
+export function resolveModelRouting(agentName, inputModel, configuredModels) {
   try {
     if (typeof agentName !== "string" || agentName.length === 0) {
       return { known: false, model: undefined, corrected: false, reason: "missing agent name" };
@@ -499,9 +471,6 @@ export function resolveModelRouting(agentName, inputModel, configuredModels, opt
     const explicit = typeof inputModel === "string" && inputModel.length > 0;
 
     if (route === undefined) {
-      // No declared class: only a configured agent is routeable, and its
-      // configured model is the safest thing to run. An unknown agent is left
-      // to the caller (fail-safe: no policy knowledge, no correction).
       if (typeof configured !== "string" || configured.length === 0) {
         return {
           known: false,
@@ -515,33 +484,20 @@ export function resolveModelRouting(agentName, inputModel, configuredModels, opt
     }
 
     if (route.class === "pinned") {
-      const ladder = getPinLadder(agentName);
-      const configuredStr = typeof configured === "string" && configured.length > 0 ? configured : undefined;
-      const firstCandidate = configuredStr ?? (Array.isArray(ladder) && ladder.length ? ladder[0] : undefined) ?? PINNED_MODEL_FALLBACKS[agentName];
-      const candidates = [];
-      if (configuredStr) candidates.push(configuredStr);
-      if (Array.isArray(ladder)) for (const m of ladder) candidates.push(m);
-      if (PINNED_MODEL_FALLBACKS[agentName]) candidates.push(PINNED_MODEL_FALLBACKS[agentName]);
-      const unique = [...new Set(candidates.filter((m) => typeof m === "string" && m.length > 0 && isP8Model(m)))];
-      // All candidates must be p8 models; paid models are never run by pinned workers.
-      const isAvailable = (model) => toBooleanStatus(resolveP8Availability(model, options));
-      let chosen;
-      for (const c of unique) {
-        if (isAvailable(c)) { chosen = c; break; }
-      }
-      if (chosen === undefined) {
+      // Pinned: the configured model always wins; a different input is corrected.
+      if (typeof configured === "string" && configured.length > 0) {
         return {
           known: true,
-          model: undefined,
-          corrected: false,
-          reason: "no available p8 model for " + JSON.stringify(agentName),
+          model: configured,
+          corrected: inputModel !== configured,
+          reason: inputModel === configured ? "model matches the configured pin" : "pinned to " + JSON.stringify(configured),
         };
       }
       return {
-        known: true,
-        model: chosen,
-        corrected: inputModel !== chosen,
-        reason: inputModel === chosen ? "model matches the configured pin" : "pinned to " + JSON.stringify(chosen),
+        known: false,
+        model: undefined,
+        corrected: false,
+        reason: "no configured model to pin for " + JSON.stringify(agentName),
       };
     }
 
@@ -658,7 +614,7 @@ export function resolveNestedDelegation(agentName, toolName, input, policy) {
  * `resolveModelRouting` falls back to the hardcoded bishop/knight pins when the
  * config declares none, so a pinned child never inherits the parent's model.
  */
-export function resolveSubagentInput(input, configuredModels, policy, options) {
+export function resolveSubagentInput(input, configuredModels, policy) {
   if (!input || typeof input !== "object") return null;
   const agentName = typeof input.agent === "string" ? input.agent : "";
   if (agentName.length === 0) return null;
@@ -681,7 +637,7 @@ export function resolveSubagentInput(input, configuredModels, policy, options) {
     }
   }
 
-  const routing = resolveModelRouting(agentName, input.model, configuredModels, options);
+  const routing = resolveModelRouting(agentName, input.model, configuredModels);
   if (!routing.known || !routing.corrected) return null;
   return {
     changed: true,
@@ -693,353 +649,3 @@ export function resolveSubagentInput(input, configuredModels, policy, options) {
     input: { ...input, model: routing.model },
   };
 }
-
-
-/* P8 model availability cache and pinned ladder helpers. */
-
-const p8ModelAvailabilityCache = new Map();
-export { p8ModelAvailabilityCache };
-export const P8_MODEL_AVAILABILITY = p8ModelAvailabilityCache;
-export const p8AvailabilityCache = p8ModelAvailabilityCache;
-export const p8ModelAvailability = p8ModelAvailabilityCache;
-export const p8Availability = p8ModelAvailabilityCache;
-
-function isP8Model(model) {
-  return typeof model === "string" && (model.startsWith("p8-agent/") || model.startsWith("p8-agent-fast/"));
-}
-
-export function resetP8ModelAvailabilityCache() {
-  p8ModelAvailabilityCache.clear();
-}
-
-function toBooleanStatus(value) {
-  if (value === undefined || value === null) return true;
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value >= 200 && value < 300;
-  if (typeof value === "string") {
-    const lower = value.trim().toLowerCase();
-    if (lower === "true" || lower === "available" || lower === "ok" || lower === "success") return true;
-    if (lower === "false" || lower === "unavailable" || lower === "down") return false;
-    return true;
-  }
-  if (value && typeof value === "object") {
-    if (value instanceof Map) return true;
-    if (Object.prototype.hasOwnProperty.call(value, "available")) return !!value.available;
-    if (Object.prototype.hasOwnProperty.call(value, "ok")) return !!value.ok;
-    if (Object.prototype.hasOwnProperty.call(value, "success")) return !!value.success;
-    if (Object.prototype.hasOwnProperty.call(value, "status")) {
-      const s = value.status;
-      if (typeof s === "number") return s >= 200 && s < 300;
-      if (typeof s === "string") {
-        const lower = s.trim().toLowerCase();
-        return lower.includes("ok") || lower === "200";
-      }
-    }
-    return true;
-  }
-  return true;
-}
-
-function normalizeAvailableValue(value) {
-  if (value === true) return { available: true, ok: true, status: 200 };
-  if (value === false) return { available: false, ok: false, status: 503 };
-  if (value === undefined || value === null) return { available: true, ok: true, status: 200 };
-  if (typeof value === "number") {
-    const available = value >= 200 && value < 300;
-    return { available, ok: available, status: value };
-  }
-  if (typeof value === "string") {
-    const available = toBooleanStatus(value);
-    return { available, ok: available, status: available ? 200 : 503 };
-  }
-  if (value && typeof value === "object") {
-    const available = toBooleanStatus(value);
-    const status =
-      typeof value.status === "number"
-        ? value.status
-        : available
-        ? 200
-        : 503;
-    return { available, ok: available, status, retryAfter: value.retryAfter };
-  }
-  return { available: true, ok: true, status: 200 };
-}
-
-function parseRetryAfterValue(value) {
-  if (value === undefined || value === null) return undefined;
-  const numeric = Number(value);
-  if (Number.isFinite(numeric)) return Math.max(0, numeric) * 1000;
-  const parsedDate = Date.parse(String(value));
-  if (Number.isFinite(parsedDate)) return Math.max(0, parsedDate - Date.now());
-  return undefined;
-}
-
-function getCacheMap(cache) {
-  if (cache instanceof Map) return cache;
-  return p8ModelAvailabilityCache;
-}
-
-export function getP8ModelAvailability(model, options) {
-  const opts = options && typeof options === "object" ? options : {};
-  const now = Number.isFinite(opts.now) ? opts.now : Date.now();
-  const cache = getCacheMap(opts.cache);
-  if (!cache.has(model)) return undefined;
-  const entry = cache.get(model);
-  if (!entry || typeof entry !== "object") {
-    cache.delete(model);
-    return undefined;
-  }
-  if (typeof entry.expiresAt === "number" && entry.expiresAt <= now) {
-    cache.delete(model);
-    return undefined;
-  }
-  if (typeof entry.available === "boolean") return entry.available;
-  // backward compatibility: status objects without available
-  return toBooleanStatus(entry);
-}
-
-export function recordP8ModelAvailability(model, available, options) {
-  if (typeof model !== "string" || model.length === 0) return undefined;
-  const opts = options && typeof options === "object" ? options : {};
-  const now = Number.isFinite(opts.now) ? opts.now : Date.now();
-  const cache = getCacheMap(opts.cache);
-  const normalized = normalizeAvailableValue(available);
-  // Also allow options.available to supply status when called as record(model, options)
-  const effectiveAvailable = (available && typeof available === "object" && !opts.available && Object.keys(opts).length === 0 && available.available === undefined && available.status === undefined)
-    ? normalizeAvailableValue(available)
-    : normalized;
-
-  let retryAfterMs = opts.retryAfterMs;
-  if (retryAfterMs === undefined && opts.retryAfter !== undefined) {
-    retryAfterMs = parseRetryAfterValue(opts.retryAfter);
-  }
-  if (retryAfterMs === undefined && effectiveAvailable.retryAfter !== undefined) {
-    retryAfterMs = parseRetryAfterValue(effectiveAvailable.retryAfter);
-  }
-
-  let ttlMs = opts.ttlMs;
-  if (ttlMs === undefined && opts.ttl !== undefined) ttlMs = opts.ttl;
-  if (ttlMs === undefined) {
-    if (retryAfterMs !== undefined && available !== true && effectiveAvailable.available === false) ttlMs = retryAfterMs;
-    else ttlMs = effectiveAvailable.available ? 15000 : 30000;
-  }
-
-  const entry = {
-    available: effectiveAvailable.available,
-    expiresAt: now + Math.max(0, Number.isFinite(ttlMs) ? ttlMs : 0),
-    retryAfterMs,
-  };
-  cache.set(model, entry);
-  return { ...entry, ok: effectiveAvailable.available, status: effectiveAvailable.status };
-}
-
-// backward compatible positional form: recordP8ModelAvailability(model, {status})
-// already handled above because available can be object and options empty.
-
-export async function probeP8ModelAvailability(model, options) {
-  const opts = options && typeof options === "object" ? options : {};
-  const fetchImpl =
-    typeof opts.fetchImpl === "function"
-      ? opts.fetchImpl
-      : typeof opts.fetch === "function"
-      ? opts.fetch
-      : typeof globalThis.fetch === "function"
-      ? globalThis.fetch
-      : undefined;
-
-  const baseUrl = opts.baseUrl || opts.baseURL || opts.apiBase || opts.base || "https://ollama.ecitis.org/agent/v1";
-  const timeoutMs = Number.isFinite(opts.timeoutMs)
-    ? opts.timeoutMs
-    : Number.isFinite(opts.timeout)
-    ? opts.timeout
-    : 5000;
-
-  const apiKey = opts.apiKey || opts.token || opts.authToken || opts.key;
-  const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
-  if (apiKey && !headers.Authorization && !headers.authorization) {
-    headers.Authorization = "Bearer " + apiKey;
-  }
-
-  let url = opts.url || opts.endpoint || opts.endpointUrl;
-  if (!url) {
-    const base = String(baseUrl).replace(/\/+$/, "");
-    url = base.endsWith("/chat/completions") ? base : base + "/chat/completions";
-  }
-
-  const body =
-    opts.body && typeof opts.body === "object"
-      ? opts.body
-      : { model, messages: [{ role: "user", content: "ping" }], max_tokens: 1 };
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  let result;
-  try {
-    if (typeof fetchImpl !== "function") throw new Error("fetch is not available");
-    const response = await fetchImpl(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-
-    const retryAfterRaw =
-      response && response.headers && typeof response.headers.get === "function"
-        ? response.headers.get("retry-after") || response.headers.get("Retry-After")
-        : undefined;
-    const retryAfterMs = parseRetryAfterValue(retryAfterRaw);
-
-    const status = typeof response.status === "number" ? response.status : (response && response.ok ? 200 : 503);
-    const ok = !!(response && response.ok === true) || (status >= 200 && status < 300);
-
-    // Use opts.ttlMs as default TTL when finite, otherwise fall back to hardcoded defaults
-    const defaultAvailableTtlMs = Number.isFinite(opts.ttlMs) ? opts.ttlMs : 15000;
-    const defaultUnavailableTtlMs = Number.isFinite(opts.ttlMs) ? opts.ttlMs : 30000;
-
-    if (status >= 200 && status < 300) {
-      recordP8ModelAvailability(model, true, { now: undefined, ttlMs: defaultAvailableTtlMs, cache: opts.cache });
-    } else if (status === 429) {
-      recordP8ModelAvailability(model, false, { now: undefined, retryAfterMs, ttlMs: retryAfterMs !== undefined ? retryAfterMs : defaultUnavailableTtlMs, cache: opts.cache });
-    } else if (status >= 500 || status === 0) {
-      recordP8ModelAvailability(model, false, { ttlMs: defaultUnavailableTtlMs, cache: opts.cache });
-    } else {
-      // Other statuses (4xx) treat as unavailable with default unavailable TTL
-      recordP8ModelAvailability(model, false, { ttlMs: defaultUnavailableTtlMs, cache: opts.cache });
-    }
-
-    result = {
-      model,
-      available: status >= 200 && status < 300,
-      ok: status >= 200 && status < 300,
-      status,
-      retryAfter: retryAfterRaw,
-      retryAfterMs,
-    };
-  } catch (error) {
-    recordP8ModelAvailability(model, false, { ttlMs: defaultUnavailableTtlMs, cache: opts.cache });
-    result = {
-      model,
-      available: false,
-      ok: false,
-      status: 0,
-      error: error && error.message ? error.message : String(error),
-    };
-  } finally {
-    clearTimeout(timer);
-  }
-  return result;
-}
-
-// Availability interpretation helpers.
-export function availabilityFromOptions(options) {
-  // Support call forms:
-  // availabilityFromOptions(options) -> (model) => boolean|undefined
-  // availabilityFromOptions(model, options) -> boolean|undefined
-  if (arguments.length >= 2) {
-    const model = arguments[0];
-    const opts = arguments[1];
-    const available = resolveP8Availability(model, opts);
-    if (available === true || available === false) return available;
-    return toBooleanStatus(available);
-  }
-  const opts = options;
-  return (model) => {
-    const available = resolveP8Availability(model, opts);
-    if (available === true || available === false) return available;
-    return toBooleanStatus(available);
-  };
-}
-
-function resolveP8Availability(model, options) {
-  const now = Date.now();
-  if (options == null) {
-    const cached = getP8ModelAvailability(model, { now, cache: p8ModelAvailabilityCache });
-    if (cached === undefined) return true;
-    return cached;
-  }
-  if (typeof options === "function") {
-    try {
-      const value = options(model);
-      return value;
-    } catch {
-      return false;
-    }
-  }
-  if (Array.isArray(options)) {
-    return options.includes(model);
-  }
-  if (options instanceof Map) {
-    if (options.has(model)) return options.get(model);
-    return true;
-  }
-  if (typeof options === "object") {
-    // Candidate arrays under common keys.
-    for (const key of ["availableModels", "availableList", "models"]) {
-      if (Array.isArray(options[key])) return options[key].includes(model);
-    }
-    // Mapping sources under common keys.
-    for (const key of ["availability", "modelAvailability", "probe", "isAvailable", "available"]) {
-      const src = options[key];
-      if (src === undefined) continue;
-      if (typeof src === "function") return src(model);
-      if (src instanceof Map) {
-        if (src.has(model)) return src.get(model);
-        return true;
-      }
-      if (Array.isArray(src)) return src.includes(model);
-      if (src && typeof src === "object") {
-        if (Object.prototype.hasOwnProperty.call(src, model)) return src[model];
-        // global status object applies to all candidates
-        if (
-          Object.prototype.hasOwnProperty.call(src, "available") ||
-          Object.prototype.hasOwnProperty.call(src, "ok") ||
-          Object.prototype.hasOwnProperty.call(src, "success") ||
-          Object.prototype.hasOwnProperty.call(src, "status")
-        ) {
-          return src;
-        }
-      }
-      if (typeof src === "boolean") return src;
-      if (typeof src === "number") return src;
-    }
-    // Direct mapping on the options object itself.
-    if (Object.prototype.hasOwnProperty.call(options, model)) {
-      return options[model];
-    }
-    // Global status object.
-    if (
-      Object.prototype.hasOwnProperty.call(options, "available") ||
-      Object.prototype.hasOwnProperty.call(options, "ok") ||
-      Object.prototype.hasOwnProperty.call(options, "success") ||
-      Object.prototype.hasOwnProperty.call(options, "status")
-    ) {
-      return options;
-    }
-    if (Array.isArray(options.availableModels) ) return options.availableModels.includes(model);
-  }
-  // cache in options
-  if (options && options.cache instanceof Map) {
-    const c = getP8ModelAvailability(model, { now, cache: options.cache });
-    if (c !== undefined) return c;
-  }
-  const cached = getP8ModelAvailability(model, { now, cache: p8ModelAvailabilityCache });
-  if (cached !== undefined) return cached;
-  return true;
-}
-
-// candidate filtering helper exported for tests
-export function isP8Candidate(model) {
-  return isP8Model(model);
-}
-
-// Aliases.
-export const probeP8Availability = probeP8ModelAvailability;
-export const probeP8Model = probeP8ModelAvailability;
-export const resetP8AvailabilityCache = resetP8ModelAvailabilityCache;
-export const resetP8Cache = resetP8ModelAvailabilityCache;
-export const getP8Availability = getP8ModelAvailability;
-export const setP8Availability = recordP8ModelAvailability;
-export const setP8ModelAvailability = recordP8ModelAvailability;
-export const recordP8Availability = recordP8ModelAvailability;
-export const getPinLadderAlias = getPinLadder;
