@@ -2,6 +2,14 @@
 service.json
 auth.json
 
+# Skill credentials — the shipped example files stay, the real ones never do.
+skills/*/credentials.env
+skills/*/credentials.local.env
+*.env.local
+
+# Local-only private-context terms for the public release gate.
+scripts/private-context.local.txt
+
 # Node (the Beeper bridge)
 node_modules/
 bun.lock

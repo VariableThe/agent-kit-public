@@ -171,6 +171,10 @@ plus self-contained scripts. They run on-device; no file leaves the machine.
 | `t3-thread-orchestration` | spawn, monitor, and follow up on independent top-level T3 threads | the T3 Code MCP server |
 | `unslop` | Remove AI writing patterns from prose; de-AI text | none (content-only) |
 | `thread-todo` | persistent per-thread todo list on disk, so an interrupted thread or stopped subagent resumes from the list | stdlib only |
+| `google-calendar` | read and manage Google Calendar events (agenda, free/busy, create, update, delete) | stdlib only; Google OAuth credentials |
+| `todoist` | manage Todoist projects, labels, sections and tasks | stdlib only; `TODOIST_API_TOKEN` |
+| `report` | turn Markdown notes into a DOCX report through a draft-review-render workflow | stdlib only |
+| `slide-deck` | build a self-contained HTML slide deck from a Markdown outline | stdlib only |
 
 ```sh
 pip install -r requirements.txt        # Python deps
@@ -350,11 +354,19 @@ Never commit secrets. Local secrets stay out of the repo:
 `bash scripts/check-secrets.sh` scans tracked files for token-shaped
 patterns and exits non-zero on a hit.
 
+`bash scripts/check-public-release.sh` is the second half of the release
+gate: it looks for private context a secret scanner misses (absolute home
+directories, tailnet and RFC1918 addresses, personal mail addresses) and
+for credential files that were committed by accident. Extra literal terms
+(one maintainer's internal host names, account names, private domains) live
+in the gitignored `scripts/private-context.local.txt`, one term per line, so
+the gate itself stays publishable.
+
 ## Git workflow
 
 Feature branches, Conventional Commits, PRs only — never direct to `main`.
-Run `npm test`, `npm run check`, and `bash scripts/check-secrets.sh` before
-opening a PR.
+Run `npm test`, `npm run check`, `bash scripts/check-secrets.sh` and
+`bash scripts/check-public-release.sh` before opening a PR.
 
 ## License
 
