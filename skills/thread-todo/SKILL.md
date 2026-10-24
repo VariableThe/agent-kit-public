@@ -1,6 +1,6 @@
 ---
 name: thread-todo
-description: Persistent per-thread todo list kept on disk so an interrupted thread, a stopped subagent, or a later session resumes from the list instead of from scratch. Triggers: todo list, task list, add to todo, resume work, continue where we left off, thread todo, track tasks.
+description: Persistent per-thread todo list on disk, so an interrupted thread or stopped subagent resumes from the list. Triggers: todo list, task list, resume work, continue where we left off.
 license: MIT
 compatibility: opencode
 metadata:

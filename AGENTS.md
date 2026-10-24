@@ -21,13 +21,11 @@ Applies to every project/session. Project-local AGENTS.md overrides; user instru
 - Prefer dedicated file tools over shell. Batch independent calls in parallel; sequence dependent ones. Never poll background work.
 
 ## Thread Todo
-Every thread with real work keeps a todo list on disk via the `thread-todo` skill (`python3 skills/thread-todo/scripts/thread_todo.py`).
-- Scope: `--thread <t3 threadId>` (from `t3_thread_configuration`) for per-thread isolation; default cwd scope when no thread id exists.
-- Thread start: `resume`; on a missing list `init` and add the plan as items.
-- Before working an item `start ID`, after finishing it `done ID`, when stuck `block ID --note "why"`.
-- Notes carry the context a stopped agent's replacement needs: file touched, command that failed, decision and reason.
-- Subagents share the parent's `--scope <name>` list; one owner per item.
-- Thread end: `close --summary "outcome"`. Never leave unfinished work described only in chat.
+Real work runs on a disk-backed list: `python3 skills/thread-todo/scripts/thread_todo.py`.
+- Scope `--thread <t3 threadId>` (from `t3_thread_configuration`) per thread; cwd scope by default.
+- Start: `resume`; then `init` and add the plan. Per item `start ID` -> `done ID`; stuck: `block ID --note "why"`.
+- Notes hold the context a replacement needs. Subagents share the parent's `--scope <name>`.
+- End: `close --summary "outcome"`. Never leave unfinished work only in chat.
 
 ## Quality Bar
 - Be specific/contextual, never generic. No filler in user-facing copy. No hollow UI backed by no data/endpoint. Taste: generate options, reject structurally, keep survivors.
