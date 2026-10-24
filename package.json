@@ -10,7 +10,8 @@
   },
   "scripts": {
     "check": "node --check plugins/hierarchy-guard/policy.mjs && node --check plugins/tailshare/rewrite.mjs",
-    "test": "node --test test/hierarchy-guard-policy.test.mjs test/readonly-shell-allowlist.test.mjs test/tailshare-rewrite.test.mjs"
+    "test": "node --test test/hierarchy-guard-policy.test.mjs test/readonly-shell-allowlist.test.mjs test/tailshare-rewrite.test.mjs",
+    "test:revert": "bash test/revert-hierarchy.test.sh"
   },
   "license": "MIT"
 }
