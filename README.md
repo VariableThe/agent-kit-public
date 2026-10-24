@@ -44,6 +44,8 @@ agent-kit/
 ├── scripts/
 │   ├── check-secrets.sh
 │   ├── measure-tokens.mjs  # char/token budget reporter
+│   ├── revert_hierarchy.sh # undo the hierarchy setup, restore plain plan/build (bash)
+│   ├── revert_hierarchy.ps1 # same, for Windows PowerShell
 │   └── tailshare           # tailnet link helper (-> ~/.local/bin/tailshare)
 ├── requirements.txt        # Python deps for the skills
 └── service.json.example    # template for local, gitignored service.json
@@ -86,6 +88,51 @@ Role resolution is `--role` flag > `~/.config/agent-kit/host.json` > `plain`.
 The installer only creates or updates symlinks; it never overwrites a real
 file or directory — it warns and skips. `./install.sh --uninstall` removes
 only the symlinks it created (never `opencode.json`).
+
+## Revert: back to plain plan/build
+
+To undo the hierarchy setup, the revert scripts remove the hierarchy agents
+(`monarch`, `bishop`, `knight`, `mercenary`, `p8-worker`, `witch`, `mage`,
+`grand-bishop`, `knight-commander`), drop the `build`/`plan` overrides so
+OpenCode's own plan and build agents apply again, delete the
+`hierarchy-guard` plugin link and the other installer symlinks, and leave
+your own files alone. Every file they rewrite is backed up as
+`<file>.bak-<timestamp>-pre-revert` before the write.
+
+One line each:
+
+```sh
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/VariableThe/agent-kit-public/main/scripts/revert_hierarchy.sh | bash
+
+# with a project-local opencode.json to clean as well
+curl -fsSL https://raw.githubusercontent.com/VariableThe/agent-kit-public/main/scripts/revert_hierarchy.sh | bash -s -- /path/to/project
+```
+
+```powershell
+# Windows PowerShell
+iwr -usebasicparsing https://raw.githubusercontent.com/VariableThe/agent-kit-public/main/scripts/revert_hierarchy.ps1 | iex
+
+# with a project-local opencode.json to clean as well
+iwr -usebasicparsing https://raw.githubusercontent.com/VariableThe/agent-kit-public/main/scripts/revert_hierarchy.ps1 -OutFile revert_hierarchy.ps1; powershell -ExecutionPolicy Bypass -File .\revert_hierarchy.ps1 -Project C:\path\to\project
+```
+
+Both commands take the script straight from `main`; read it first if you
+prefer (`scripts/revert_hierarchy.sh`, `scripts/revert_hierarchy.ps1`).
+`revert_hierarchy.ps1 -DryRun` reports what would change and touches
+nothing.
+
+The `p8-agent` / `p8-agent-fast` provider block is removed only when the
+private key file `~/.config/opencode/secrets/p8-api-key` is missing — that
+block is what leaves a fresh public install unable to start. With the key
+present the provider configuration is left as it is.
+
+Restart OpenCode after the revert.
+
+The bash script is covered by `test/revert-hierarchy.test.sh`
+(`npm run test:revert`), which runs it against a fake `HOME` and checks the
+config rewrite, the backup, and that the clone and its symlink targets stay
+untouched.
 
 ## Config: base + overlay
 
