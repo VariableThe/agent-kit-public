@@ -170,6 +170,7 @@ plus self-contained scripts. They run on-device; no file leaves the machine.
 | `tailnet-transfer` | move files across the tailnet (Taildrop, rsync/scp, HTTP serve) | stdlib only; `tailscale`, `rsync`, `tailshare` |
 | `t3-thread-orchestration` | spawn, monitor, and follow up on independent top-level T3 threads | the T3 Code MCP server |
 | `unslop` | Remove AI writing patterns from prose; de-AI text | none (content-only) |
+| `thread-todo` | persistent per-thread todo list on disk, so an interrupted thread or stopped subagent resumes from the list | stdlib only |
 
 ```sh
 pip install -r requirements.txt        # Python deps

@@ -20,6 +20,13 @@ Applies to every project/session. Project-local AGENTS.md overrides; user instru
 ## Tool Use
 - Prefer dedicated file tools over shell. Batch independent calls in parallel; sequence dependent ones. Never poll background work.
 
+## Thread Todo
+Real work runs on a disk-backed list: `python3 skills/thread-todo/scripts/thread_todo.py`.
+- Scope `--thread <t3 threadId>` (from `t3_thread_configuration`) per thread; cwd scope by default.
+- Start: `resume`; then `init` and add the plan. Per item `start ID` -> `done ID`; stuck: `block ID --note "why"`.
+- Notes hold the context a replacement needs. Subagents share the parent's `--scope <name>`.
+- End: `close --summary "outcome"`. Never leave unfinished work only in chat.
+
 ## Quality Bar
 - Be specific/contextual, never generic. No filler in user-facing copy. No hollow UI backed by no data/endpoint. Taste: generate options, reject structurally, keep survivors.
 
