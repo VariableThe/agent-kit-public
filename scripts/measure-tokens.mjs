@@ -16,13 +16,24 @@ function read(rel) {
 
 const agentsMd = read("AGENTS.md");
 
-const config = JSON.parse(read("opencode.base.json"));
-const agentSystems = {};
+// opencode.base.json only exists in a repo that manages opencode.json; the
+// agent-system budget is then reported per agent. Without it the report covers
+// what this repo ships: AGENTS.md and the skill catalog.
+let agentSystems = {};
 const systemStrings = [];
-for (const [name, def] of Object.entries(config.agents || {})) {
-  const sys = typeof def?.system === "string" ? def.system : "";
-  agentSystems[name] = measure(sys);
-  systemStrings.push(sys);
+const basePath = join(root, "opencode.base.json");
+let config = null;
+try {
+  config = JSON.parse(readFileSync(basePath, "utf8"));
+} catch {
+  config = null;
+}
+if (config !== null) {
+  for (const [name, def] of Object.entries(config.agents || {})) {
+    const sys = typeof def?.system === "string" ? def.system : "";
+    agentSystems[name] = measure(sys);
+    systemStrings.push(sys);
+  }
 }
 agentSystems.total = measure(systemStrings.join(""));
 
@@ -48,8 +59,6 @@ for (const entry of readdirSync(skillsDir)) {
   }
 }
 
-const afterTxt = read("docs/scheduled-daily-model-check/after.txt");
-
 const result = {
   agentsMd: measure(agentsMd),
   agentSystems,
@@ -57,7 +66,6 @@ const result = {
     frontmatter: { chars: frontmatterTotal, tokens: frontmatterTotal / 4 },
     descriptions: { chars: descriptionsTotal, tokens: descriptionsTotal / 4 },
   },
-  scheduledDailyModelCheckAfter: measure(afterTxt),
 };
 
 process.stdout.write(JSON.stringify(result, null, 2) + "\n");

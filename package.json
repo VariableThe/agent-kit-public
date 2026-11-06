@@ -2,16 +2,20 @@
   "name": "agent-kit",
   "version": "0.1.0",
   "private": true,
-  "description": "OpenCode policy plugin, shared skills, scripts, docs, tests, install.sh.",
+  "description": "OpenCode policy plugins, shared skills, scripts, docs, tests, install.sh.",
   "type": "module",
-  "bin": {},
   "engines": {
     "node": ">=22.5"
   },
   "scripts": {
-    "check": "node --check plugins/hierarchy-guard/policy.mjs && node --check plugins/tailshare/rewrite.mjs",
-    "test": "node --test test/tailshare-rewrite.test.mjs",
-    "test:revert": "bash test/revert-hierarchy.test.sh"
+    "check": "node --check plugins/hierarchy-guard/policy.mjs && node --check plugins/tailshare/rewrite.mjs && node --check scripts/measure-tokens.mjs",
+    "test": "node --test test/*.test.mjs skills/beeper-bot/test/*.test.mjs",
+    "test:python": "bash scripts/test-python.sh",
+    "test:revert": "bash test/revert-hierarchy.test.sh",
+    "test:split": "bash test/windows-split.test.sh",
+    "test:notice": "bash test/web-artifacts-notice.test.sh",
+    "budget": "node scripts/measure-tokens.mjs",
+    "test:e2e": "bash test/hierarchy-guard-e2e.sh"
   },
   "license": "MIT"
 }

@@ -1,27 +1,33 @@
 #!/usr/bin/env bash
 # agent-kit installer (bash + node only)
 #
-# One repo for the whole setup: OpenCode config (base + per-host overlay),
-# the global AGENTS.md / cli.json, the skills under ./skills, and the Beeper
-# MCP bridge under ./src. Everything is symlinked back into place, so this
-# repo stays the single source of truth.
+# Symlinks the parts of this repo an OpenCode install can use: the global
+# AGENTS.md, every skill under ./skills, and the two OpenCode plugins under
+# ./plugins. If this repo also carries opencode.base.json and overlays/,
+# the installer merges them into the live opencode.json as well.
+#
+# Everything is symlinked back into place, so this repo stays the single
+# source of truth; re-run the installer after an edit.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 BASE_FILE="$REPO_ROOT/opencode.base.json"
 OVERLAYS_DIR="$REPO_ROOT/overlays"
 SKILLS_DIR="$REPO_ROOT/skills"
-SHIM_SRC="$REPO_ROOT/src/beeper-mcp-shim.mjs"
-TAILSHARE_SRC="$REPO_ROOT/scripts/tailshare"
 LIVE_FILE="$HOME/.config/opencode/opencode.json"
 HOST_FILE="$HOME/.config/agent-kit/host.json"
-SHIM_LINK="$HOME/.local/bin/beeper-mcp-shim"
-TAILSHARE_LINK="$HOME/.local/bin/tailshare"
 TAILSHARE_PLUGIN_SRC="$REPO_ROOT/plugins/tailshare"
 TAILSHARE_PLUGIN_LINK="$HOME/.config/opencode/plugins/tailshare"
 HIERARCHY_GUARD_PLUGIN_SRC="$REPO_ROOT/plugins/hierarchy-guard"
 HIERARCHY_GUARD_PLUGIN_LINK="$HOME/.config/opencode/plugins/hierarchy-guard"
 SKILL_LINK_DIRS=("$HOME/.config/opencode/skills" "$HOME/.agents/skills")
+
+# Config management is optional: only a repo that ships a base config and an
+# overlays/ directory manages opencode.json. Everything else is still linkable.
+CONFIG_MANAGED=0
+if [[ -f "$BASE_FILE" && -d "$OVERLAYS_DIR" ]]; then
+  CONFIG_MANAGED=1
+fi
 
 usage() {
   cat <<EOF
@@ -34,40 +40,39 @@ Modes (default is read-only):
   --check        Report drift between this repo and the machine; exit 1 on drift, 0 when clean.
                  This is the default when no flags are given. Creates no backups and writes nothing.
   --dry-run      Alias for --check.
-  --apply        Write changes: merge base + role overlay into $HOME/.config/opencode/opencode.json,
-                 link AGENTS.md / cli.json / tailshare / tailshare plugin / hierarchy-guard plugin, project the ./skills symlinks,
-                 and link the Beeper bridge into ~/.local/bin. The only mode that writes opencode.json.
-  --role <name>  Use overlay overlays/<name>.json for this run. When combined with --apply and the
-                 apply succeeds, the role is persisted to $HOME/.config/agent-kit/host.json
-                 as {"role": "<name>"}. Without --apply it only affects that run's check.
+  --apply        Write changes: link AGENTS.md, the plugins, and project the ./skills symlinks.
+                 When this repo ships opencode.base.json + overlays/, also merge them into
+                 $HOME/.config/opencode/opencode.json (the only mode that writes it).
+  --role <name>  Use overlay overlays/<name>.json for this run. Only available when this repo
+                 ships overlays/. When combined with --apply and the apply succeeds, the role is
+                 persisted to $HOME/.config/agent-kit/host.json as {"role": "<name>"}. Without
+                 --apply it only affects that run's check.
                  Role resolution: --role flag > host.json > "plain".
-  --force        Bypass the two refusal guards (temporary-checkout guard and drop-live-config guard).
-  --uninstall    Remove only installer-created symlinks (AGENTS.md, cli.json, tailshare, tailshare plugin, skill links, the shim).
+  --force        Bypass the refusal guards (temporary-checkout guard, drop-live-config guard).
+  --uninstall    Remove only installer-created symlinks (AGENTS.md, plugin links, skill links).
                  Never deletes opencode.json itself. Refuses from a temporary checkout unless --force.
   --help         Show this help and exit 0.
 
-Roles / overlays:
-  plain (overlays/plain.json, {}) is the default and carries no machine-specific settings.
-  beeper-client (overlays/beeper-client.json) adds mcp.servers.beeper (remote HTTP to the Beeper
-  Desktop MCP endpoint on 127.0.0.1:23373, bearer token from BEEPER_MCP_TOKEN) and
-  mcp.servers.beeper_ssh (ssh stdio bridge fallback to a Beeper host).
-  Host-specific settings never go in opencode.base.json; they belong in an overlay selected by role.
+Config management in this repo:
+$(if [[ "$CONFIG_MANAGED" -eq 1 ]]; then
+    printf '  enabled: opencode.base.json + overlays/ found; --apply merges them into opencode.json.\n'
+  else
+    printf '  disabled: no opencode.base.json / overlays/ here, so opencode.json is never touched.\n'
+    printf '  The installer only links AGENTS.md, skills/ and plugins/.\n'
+  fi)
 
 What gets linked:
   AGENTS.md                         -> ~/.config/opencode/AGENTS.md   (global agent rules)
-  cli.json                          -> ~/.config/opencode/cli.json
   skills/<name>                     -> ~/.config/opencode/skills/<name> and ~/.agents/skills/<name>
-  src/beeper-mcp-shim.mjs           -> ~/.local/bin/beeper-mcp-shim
-  scripts/tailshare                 -> ~/.local/bin/tailshare
   plugins/tailshare                 -> ~/.config/opencode/plugins/tailshare (auto-discovered, no config change)
   plugins/hierarchy-guard           -> ~/.config/opencode/plugins/hierarchy-guard (auto-discovered, no config change)
 
 Refusal guards (read-only by default):
-  1. Writing is opt-in: only --apply writes opencode.json. --check / default writes nothing.
-  2. Refuse to drop live config: before writing, the merged result is compared against the live
-     file. If the merge would remove any mcp.servers entry (or top-level key) present live,
-     the installer refuses, exits non-zero, writes nothing, and names the entry plus the fix
-     (--role <name> or --force).
+  1. Writing is opt-in: only --apply writes anything. --check / default writes nothing.
+  2. Refuse to drop live config (only when config management is enabled): before writing, the
+     merged result is compared against the live file. If the merge would remove any mcp.servers
+     entry (or top-level key) present live, the installer refuses, exits non-zero, writes nothing,
+     and names the entry plus the fix (--role <name> or --force).
   3. Refuse from a temporary checkout: if the repo root is a linked git worktree
      (git rev-parse --git-dir differs from --git-common-dir) or lives under a worktrees
      directory, the installer refuses unless --force, because symlinks into a worktree
@@ -75,8 +80,8 @@ Refusal guards (read-only by default):
 
 Examples:
   ./install.sh --check
-  ./install.sh --apply --role beeper-client
-  ./install.sh --apply --role plain
+  ./install.sh --apply
+  ./install.sh --uninstall
 EOF
 }
 
@@ -105,8 +110,16 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ ! -f "$BASE_FILE" ]]; then echo "error: missing $BASE_FILE" >&2; exit 1; fi
-if [[ ! -d "$OVERLAYS_DIR" ]]; then echo "error: missing $OVERLAYS_DIR/" >&2; exit 1; fi
+if [[ ! -d "$SKILLS_DIR" ]]; then
+  echo "error: missing $SKILLS_DIR/" >&2
+  exit 1
+fi
+
+if [[ "$CONFIG_MANAGED" -eq 0 && -n "$ROLE_ARG" ]]; then
+  echo "error: --role needs overlays/, which this repo does not ship" >&2
+  echo "error: this repo links rules, skills and plugins only; opencode.json is not managed here" >&2
+  exit 2
+fi
 
 resolve_role() {
   if [[ -n "$ROLE_ARG" ]]; then
@@ -126,7 +139,7 @@ resolve_role() {
 
 ROLE="$(resolve_role)"
 
-if [[ "$MODE" != "uninstall" ]]; then
+if [[ "$CONFIG_MANAGED" -eq 1 && "$MODE" != "uninstall" ]]; then
   if [[ ! -f "$OVERLAYS_DIR/$ROLE.json" ]]; then
     echo "error: unknown role '$ROLE' (no overlays/$ROLE.json)" >&2
     echo "available roles:" >&2
@@ -166,7 +179,7 @@ guard_temporary_checkout() {
     fi
     echo "refusing to install from temporary checkout: $REPO_ROOT" >&2
     echo "linked worktrees and paths under a worktrees/ directory dangle once removed." >&2
-    echo "Re-run from the canonical clone (e.g. ~/Projects/agent-kit) or pass --force." >&2
+    echo "Re-run from the canonical clone or pass --force." >&2
     exit 1
   fi
 }
@@ -276,9 +289,6 @@ check_link_drift() {
   local drill=0
   for pair in \
     "AGENTS.md:$HOME/.config/opencode/AGENTS.md:$REPO_ROOT/AGENTS.md" \
-    "cli.json:$HOME/.config/opencode/cli.json:$REPO_ROOT/cli.json" \
-    "beeper-mcp-shim:$SHIM_LINK:$SHIM_SRC" \
-    "tailshare:$TAILSHARE_LINK:$TAILSHARE_SRC" \
     "tailshare-plugin:$TAILSHARE_PLUGIN_LINK:$TAILSHARE_PLUGIN_SRC" \
     "hierarchy-guard-plugin:$HIERARCHY_GUARD_PLUGIN_LINK:$HIERARCHY_GUARD_PLUGIN_SRC"; do
     local label="${pair%%:*}"
@@ -353,28 +363,40 @@ apply_skills() {
 do_check() {
   guard_temporary_checkout
   local drift=0
-  local tmp
-  tmp="$(mktemp)"
-  merged_to_stdout > "$tmp"
-  if [[ -f "$LIVE_FILE" ]]; then
-    if ! cmp -s "$tmp" "$LIVE_FILE"; then
-      echo "drift detected: opencode.json differs (base + role '$ROLE' vs live)"
+  if [[ "$CONFIG_MANAGED" -eq 1 ]]; then
+    local tmp
+    tmp="$(mktemp)"
+    merged_to_stdout > "$tmp"
+    if [[ -f "$LIVE_FILE" ]]; then
+      if ! cmp -s "$tmp" "$LIVE_FILE"; then
+        echo "drift detected: opencode.json differs (base + role '$ROLE' vs live)"
+        drift=1
+      fi
+    else
+      echo "drift detected: live $LIVE_FILE is missing"
       drift=1
     fi
+    rm -f "$tmp"
   else
-    echo "drift detected: live $LIVE_FILE is missing"
-    drift=1
+    echo "config: not managed by this repo (no opencode.base.json / overlays/); $LIVE_FILE left alone"
   fi
-  rm -f "$tmp"
 
   if ! check_link_drift; then drift=1; fi
   if ! check_skills_drift; then drift=1; fi
 
   if [[ "$drift" -ne 0 ]]; then
-    echo "check: drift found (role '$ROLE')"
+    if [[ "$CONFIG_MANAGED" -eq 1 ]]; then
+      echo "check: drift found (role '$ROLE')"
+    else
+      echo "check: drift found"
+    fi
     return 1
   fi
-  echo "check: no drift (role '$ROLE')"
+  if [[ "$CONFIG_MANAGED" -eq 1 ]]; then
+    echo "check: no drift (role '$ROLE')"
+  else
+    echo "check: no drift"
+  fi
   return 0
 }
 
@@ -406,7 +428,7 @@ if (missingServers.length > 0) console.log("SERVERS:" + missingServers.join(",")
       local first=""
       first="$(printf '%s' "$missing" | cut -d, -f1)"
       echo "refusing to apply role '$ROLE': merged config would remove mcp.servers entry '$first' present in live config." >&2
-      echo "Fix with --role beeper-client (or the role that provides '$first') or pass --force. Wrote nothing." >&2
+      echo "Fix with --role <name> or pass --force. Wrote nothing." >&2
       exit 1
     fi
     local missing_top=""
@@ -419,8 +441,7 @@ if (missingServers.length > 0) console.log("SERVERS:" + missingServers.join(",")
   fi
 }
 
-do_apply() {
-  guard_temporary_checkout
+write_live_config() {
   local tmp
   tmp="$(mktemp)"
   merged_to_stdout > "$tmp"
@@ -459,22 +480,22 @@ do_apply() {
     echo "wrote $LIVE_FILE (mode 600)"
   fi
   rm -f "$tmp"
+}
+
+do_apply() {
+  guard_temporary_checkout
+  if [[ "$CONFIG_MANAGED" -eq 1 ]]; then
+    write_live_config
+  else
+    echo "config: not managed by this repo (no opencode.base.json / overlays/); $LIVE_FILE left alone"
+  fi
 
   apply_skills
   link_file_apply "$REPO_ROOT/AGENTS.md" "$HOME/.config/opencode/AGENTS.md" "AGENTS.md"
-  link_file_apply "$REPO_ROOT/cli.json" "$HOME/.config/opencode/cli.json" "cli.json"
-  link_file_apply "$SHIM_SRC" "$SHIM_LINK" "beeper-mcp-shim"
-  link_file_apply "$TAILSHARE_SRC" "$TAILSHARE_LINK" "tailshare"
   link_dir_apply "$TAILSHARE_PLUGIN_SRC" "$TAILSHARE_PLUGIN_LINK" "tailshare plugin"
   link_dir_apply "$HIERARCHY_GUARD_PLUGIN_SRC" "$HIERARCHY_GUARD_PLUGIN_LINK" "hierarchy-guard plugin"
-  if [[ -f "$SHIM_SRC" ]]; then
-    chmod +x "$SHIM_SRC"
-  fi
-  if [[ -f "$TAILSHARE_SRC" ]]; then
-    chmod +x "$TAILSHARE_SRC"
-  fi
 
-  if [[ -n "$ROLE_ARG" ]]; then
+  if [[ "$CONFIG_MANAGED" -eq 1 && -n "$ROLE_ARG" ]]; then
     mkdir -p "$(dirname "$HOST_FILE")"
     node -e 'const fs=require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({role: process.argv[2]}) + "\n");' "$HOST_FILE" "$ROLE"
     echo "persisted role '$ROLE' to $HOST_FILE"
@@ -485,7 +506,7 @@ do_uninstall() {
   guard_temporary_checkout
   local removed=0
   local link cur
-  for link in "$HOME/.config/opencode/AGENTS.md" "$HOME/.config/opencode/cli.json" "$SHIM_LINK" "$TAILSHARE_LINK" "$TAILSHARE_PLUGIN_LINK" "$HIERARCHY_GUARD_PLUGIN_LINK"; do
+  for link in "$HOME/.config/opencode/AGENTS.md" "$TAILSHARE_PLUGIN_LINK" "$HIERARCHY_GUARD_PLUGIN_LINK"; do
     if [[ -L "$link" ]]; then
       cur="$(readlink "$link" || true)"
       case "$cur" in

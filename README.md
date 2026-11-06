@@ -1,373 +1,203 @@
 # agent-kit
 
-One repository for VariableThe's ([VariableThe](https://github.com/VariableThe))
-OpenCode setup. It holds four things that used to live in three separate
-repos and installs them all with one script:
+A portable agent setup you can install into your own home directory: global
+rules, a skills library, two OpenCode plugins, an opt-in installer, and offline
+checks that keep the tree honest.
 
-- **Config** — the machine-independent `opencode.base.json` plus per-host
-  overlays, merged into `~/.config/opencode/opencode.json`.
-- **Global rules** — `AGENTS.md` (linked to `~/.config/opencode/AGENTS.md`)
-  and `cli.json`.
-- **Skills** — local-first, on-device capabilities under `skills/`.
-- **Bridge** — `src/beeper-mcp-shim.mjs`, an stdio↔HTTP MCP bridge and the
-  fallback route to Beeper Desktop; the primary route is remote HTTP.
-
-It consolidates the former `agent-config`, `agent-skills`, and
-`beeper-ecosystem` repos. Everything is symlinked back into place, so
-this repo stays the single source of truth; edit it here, re-run the
-installer, and every machine follows.
+Everything here is files on disk. Nothing contacts a service, mints a token, or
+writes to your config until you run something yourself.
 
 ## Layout
 
 ```
-agent-kit/
-├── AGENTS.md               # global agent rules (-> ~/.config/opencode/AGENTS.md)
-├── cli.json                # OpenCode CLI/theme config (-> ~/.config/opencode/cli.json)
-├── install.sh              # the one installer (read-only by default)
-├── opencode.base.json      # machine-independent OpenCode config
-├── overlays/
-│   ├── plain.json          # {} — default, no host-specific bits
-│   └── beeper-client.json  # adds mcp.servers.beeper (remote HTTP) + beeper_ssh (ssh fallback)
-├── skills/                 # 15 skills, each SKILL.md + self-contained scripts
-├── src/beeper-mcp-shim.mjs # the Beeper MCP bridge (Node ≥ 22.5, zero deps)
-├── test/                   # unit tests (bridge transport, tailshare + hierarchy-guard policy, e2e harness)
-├── plugins/
-│   ├── tailshare           # OpenCode plugin (-> ~/.config/opencode/plugins/tailshare)
-│   │   ├── index.ts        # V2 plugin entry (system-hint + tool-result rewrite)
-│   │   ├── rewrite.mjs     # pure helpers (unit-tested, no opencode imports)
-│   │   └── package.json    # plugin manifest (host provides @opencode/plugin)
-│   └── hierarchy-guard     # permission re-enforcement plugin (same wiring)
-│       ├── index.ts        # V2 plugin entry (permission.evaluate deny hook)
-│       ├── policy.mjs      # pure helpers (unit-tested, no opencode imports)
-│       ├── README.md       # enforcement, precedence, opt-out, limitations
-│       └── package.json    # plugin manifest (no deps; host provides @opencode/plugin)
-├── scripts/
-│   ├── check-secrets.sh
-│   ├── measure-tokens.mjs  # char/token budget reporter
-│   ├── revert_hierarchy.sh # undo the hierarchy setup, restore plain plan/build (bash)
-│   ├── revert_hierarchy.ps1 # same, for Windows PowerShell
-│   └── tailshare           # tailnet link helper (-> ~/.local/bin/tailshare)
-├── requirements.txt        # Python deps for the skills
-└── service.json.example    # template for local, gitignored service.json
+AGENTS.md                 global rules, installed as ~/.config/opencode/AGENTS.md
+install.sh                opt-in installer (--check / --apply / --uninstall)
+docs/                     hierarchy notes, MCP integration notes, token budget
+plugins/hierarchy-guard/  model-routing and delegation-depth guard for OpenCode
+plugins/tailshare/        rewrites loopback URLs in replies to shareable ones
+scripts/                  token measurement, revert scripts, release/secret checks
+skills/                   the skill library (one directory per skill)
+test/                     offline tests for the policy, revert script, plugins
 ```
 
 ## Install
 
-```sh
-git clone https://github.com/VariableThe/agent-kit.git ~/Projects/agent-kit
-cd ~/Projects/agent-kit
-./install.sh --check                          # read-only: report drift
-./install.sh --apply --role beeper-client     # write config + links
-./install.sh --check                          # should report no drift
+Requirements: `git` and `bash`. Optional: Node 20+ (plugins, tests, token
+budget), Python 3.9+ (a handful of skills).
+
+```bash
+git clone https://github.com/VariableThe/agent-kit-public.git ~/agent-kit
+cd ~/agent-kit
+./install.sh --check      # report drift; changes nothing
+./install.sh --apply      # create the symlinks
+./install.sh --uninstall  # remove them again
 ```
 
-`bash`, `git`, and `node` are the only requirements (node is already needed
-by OpenCode). `--apply` is the only mode that writes `opencode.json`; it is
-mode 600 and backed up first. Default runs (`./install.sh`, `--check`,
-`--dry-run`) write nothing.
+What `--apply` links into `~/.config/opencode/`:
 
-For the `beeper-client` role, export `BEEPER_MCP_TOKEN` in the environment
-OpenCode/T3 Code runs under before starting it: the HTTP route
-(`mcp.servers.beeper`) authenticates with that bearer token and returns 401
-without it, and the `beeper_ssh` fallback then carries the work.
-
-Role resolution is `--role` flag > `~/.config/agent-kit/host.json` > `plain`.
-
-### What it links
-
-| From | To |
-|---|---|
+| Item | Destination |
+| --- | --- |
 | `AGENTS.md` | `~/.config/opencode/AGENTS.md` |
-| `cli.json` | `~/.config/opencode/cli.json` |
-| `skills/<name>` | `~/.config/opencode/skills/<name>` and `~/.agents/skills/<name>` |
-| `src/beeper-mcp-shim.mjs` | `~/.local/bin/beeper-mcp-shim` |
-| `scripts/tailshare` | `~/.local/bin/tailshare` |
-| `plugins/tailshare` | `~/.config/opencode/plugins/tailshare` |
-| `plugins/hierarchy-guard` | `~/.config/opencode/plugins/hierarchy-guard` |
+| each `skills/<name>/` | `~/.config/opencode/skills/<name>` |
+| `plugins/hierarchy-guard/` | `~/.config/opencode/plugins/hierarchy-guard` |
+| `plugins/tailshare/` | `~/.config/opencode/plugins/tailshare` |
 
-The installer only creates or updates symlinks; it never overwrites a real
-file or directory — it warns and skips. `./install.sh --uninstall` removes
-only the symlinks it created (never `opencode.json`).
+Skills are also linked into `~/.agents/skills/` (created if missing).
 
-## Revert: back to plain plan/build
+The installer is deliberately conservative:
 
-To undo the hierarchy setup, the revert scripts remove the hierarchy agents
-(`monarch`, `bishop`, `knight`, `mercenary`, `p8-worker`, `witch`, `mage`,
-`grand-bishop`, `knight-commander`), drop the `build`/`plan` overrides so
-OpenCode's own plan and build agents apply again, delete the
-`hierarchy-guard` plugin link and the other installer symlinks, and leave
-your own files alone. Every file they rewrite is backed up as
-`<file>.bak-<timestamp>-pre-revert` before the write.
-
-One line each:
-
-```sh
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/VariableThe/agent-kit-public/main/scripts/revert_hierarchy.sh | bash
-
-# with a project-local opencode.json to clean as well
-curl -fsSL https://raw.githubusercontent.com/VariableThe/agent-kit-public/main/scripts/revert_hierarchy.sh | bash -s -- /path/to/project
-```
-
-```powershell
-# Windows PowerShell
-iwr -usebasicparsing https://raw.githubusercontent.com/VariableThe/agent-kit-public/main/scripts/revert_hierarchy.ps1 | iex
-
-# with a project-local opencode.json to clean as well
-iwr -usebasicparsing https://raw.githubusercontent.com/VariableThe/agent-kit-public/main/scripts/revert_hierarchy.ps1 -OutFile revert_hierarchy.ps1; powershell -ExecutionPolicy Bypass -File .\revert_hierarchy.ps1 -Project C:\path\to\project
-```
-
-Both commands take the script straight from `main`; read it first if you
-prefer (`scripts/revert_hierarchy.sh`, `scripts/revert_hierarchy.ps1`).
-`revert_hierarchy.ps1 -DryRun` reports what would change and touches
-nothing.
-
-The `p8-agent` / `p8-agent-fast` provider block is removed only when the
-private key file `~/.config/opencode/secrets/p8-api-key` is missing — that
-block is what leaves a fresh public install unable to start. With the key
-present the provider configuration is left as it is.
-
-Restart OpenCode after the revert.
-
-The bash script is covered by `test/revert-hierarchy.test.sh`
-(`npm run test:revert`), which runs it against a fake `HOME` and checks the
-config rewrite, the backup, and that the clone and its symlink targets stay
-untouched.
-
-## Config: base + overlay
-
-`opencode.base.json` is the machine-independent live config. Host-specific
-settings never go in the base — they belong in an overlay selected by role.
-`opencode.base.json` + `overlays/<role>.json` is deep-merged into the live
-file, so adding a machine means adding an overlay, not forking the base.
-
-Three refusal guards keep the installer safe: writing is opt-in; it refuses
-to drop an `mcp.servers` entry (or top-level key) present in the live config
-unless `--force`; and it refuses to install from a temporary git worktree,
-because symlinks into a removed worktree dangle.
+- Nothing is written without `--apply`.
+- It refuses to touch an existing `~/.config/opencode/opencode.json` that looks
+  live, rather than merging into it.
+- It refuses to run from a temporary directory unless `--force` is given, so a
+  stray copy under `/tmp` cannot take over your config.
+- **Config management is optional and off by default.** This public repo ships
+  no `opencode.base.json` and no `overlays/`, so the installer links rules,
+  skills and plugins and reports `config: not managed by this repo`. Your
+  `opencode.json` is left alone. `--role` needs those overlay files and will
+  say so instead of guessing.
 
 ## Skills
 
-Each skill is a `SKILL.md` (frontmatter `name`/`description`, instructions)
-plus self-contained scripts. They run on-device; no file leaves the machine.
+36 skills. Each directory is one skill with a `SKILL.md` carrying `name`,
+`description` and the body of instructions; some ship scripts, references or
+assets.
 
-| Skill | Operation | Runtime deps |
-|---|---|---|
-| `pdf-toolkit` | merge, split, rotate, text watermark, page numbers | `pymupdf` |
-| `pdf-convert` | images to PDF, PDF pages to PNG | `pymupdf`, `pillow` |
-| `pptx-toolkit` | merge PPTX decks, slide info, slides to PDF | stdlib; `pymupdf` for to-pdf |
-| `image-toolkit` | resize, crop, text watermark, box blur | `pillow` |
-| `image-ocr` | image to text | `tesseract` binary |
-| `image-palette` | dominant-color palette | `pillow` |
-| `data-csv` | XML / Apple plist to CSV | stdlib only |
-| `audio-transcribe` | speech to text (Whisper) | `faster-whisper` |
-| `notes-to-pdf` | normalize NotebookLM Markdown, build HTML/PDF | `pandoc` binary |
-| `nextcloud` | upload, download, read, edit, delete, share-link Nextcloud files | stdlib only |
-| `beeper-collab` | keep a collaborator posted over Beeper, read replies back | stdlib only |
-| `beeper-bot` | auto-reply bot on a named chat for a bounded duration | node, `ssh`, `opencode` CLI |
-| `beeper` | operate Beeper Desktop across messaging networks (HTTP primary, ssh fallback) | the local forward + `BEEPER_MCP_TOKEN`; node, `ssh` for the fallback |
-| `workstation` | offload heavy builds / GPU jobs to a bigger machine over SSH | `ssh`, `tailscale` |
-| `tailnet-transfer` | move files across the tailnet (Taildrop, rsync/scp, HTTP serve) | stdlib only; `tailscale`, `rsync`, `tailshare` |
-| `t3-thread-orchestration` | spawn, monitor, and follow up on independent top-level T3 threads | the T3 Code MCP server |
-| `unslop` | Remove AI writing patterns from prose; de-AI text | none (content-only) |
-| `thread-todo` | persistent per-thread todo list on disk, so an interrupted thread or stopped subagent resumes from the list | stdlib only |
-| `google-calendar` | read and manage Google Calendar events (agenda, free/busy, create, update, delete) | stdlib only; Google OAuth credentials |
-| `todoist` | manage Todoist projects, labels, sections and tasks | stdlib only; `TODOIST_API_TOKEN` |
-| `report` | turn Markdown notes into a DOCX report through a draft-review-render workflow | stdlib only |
-| `slide-deck` | build a self-contained HTML slide deck from a Markdown outline | stdlib only |
+| Skill | What it does | Origin |
+| --- | --- | --- |
+| `academy-guide` | Points how-to-use-Claude questions at matching Claude Academy courses and tutorials. | upstream |
+| `algorithmic-art` | Creating algorithmic art using p5.js with seeded randomness and interactive parameter exploration. | upstream |
+| `audio-transcribe` | Transcribe audio locally with Whisper. | repo |
+| `beeper` | Send/read/search Beeper chats across networks. | repo |
+| `beeper-bot` | Run an auto-reply bot on a Beeper chat for a bounded time. | repo |
+| `beeper-collab` | Keep a collaborator posted over Beeper and read their replies. | repo |
+| `brand-guidelines` | Applies Anthropic's official brand colors and typography to artifacts. | upstream |
+| `caldav` | Read and write events on a self-hosted CalDAV calendar (Nextcloud). | repo |
+| `claude-api` | Reference for the Claude API and Anthropic SDK: models, pricing, params, streaming, tool use, MCP, caching, migrations. | upstream |
+| `data-csv` | Convert XML/plist to CSV locally. | repo |
+| `discernment-nudge` | Appends 2-3 specific follow-up questions so you can check facts, reasoning and missing context. | upstream |
+| `frontend-design` | Guidance for distinctive, intentional visual design when building or reshaping UI. | upstream |
+| `google-calendar` | Read and manage Google Calendar events (list, agenda, free/busy, create, update, delete). | repo |
+| `image-ocr` | OCR images to text with Tesseract. | repo |
+| `image-palette` | Extract dominant colors as hex. | repo |
+| `image-toolkit` | Resize/crop/watermark/blur images with Pillow. | repo |
+| `internal-comms` | Formats for internal communications: status reports, 3P updates, newsletters, FAQs, incident reports. | upstream |
+| `mcp-builder` | Guide for building high-quality MCP servers, with Python and Node reference implementations. | upstream |
+| `nextcloud` | Upload, download, read, edit, delete, and share-link files on Nextcloud. | repo |
+| `notes-to-pdf` | Normalize notes to Markdown/HTML/PDF. | repo |
+| `pdf-convert` | Convert images and PDF pages. | repo |
+| `pdf-toolkit` | Merge/split/rotate/watermark/page-number PDFs. | repo |
+| `pptx-toolkit` | Merge/inspect/export PPTX decks. | repo |
+| `report` | Generate structured reports (Markdown to DOCX) with a draft-review-render workflow. | repo |
+| `skill-creator` | Create new skills, improve existing ones, and measure skill performance. | upstream |
+| `slack-gif-creator` | Utilities for creating animated GIFs optimized for Slack. | upstream |
+| `slide-deck` | Generate self-contained HTML slide decks from a Markdown outline, with themes and speaker notes. | repo |
+| `t3-thread-orchestration` | Launch, monitor and follow up agent threads. | repo |
+| `tailnet-transfer` | Move files across a tailnet. | repo |
+| `theme-factory` | Style artifacts with one of ten preset themes (colors and fonts), or generate a new theme. | upstream |
+| `thread-todo` | Persistent per-thread todo list on disk, so an interrupted thread resumes from the list. | repo |
+| `todoist` | Manage Todoist projects, labels, sections and tasks. | repo |
+| `unslop` | Remove AI writing patterns from prose. | upstream |
+| `web-artifacts-builder` | Tools for building multi-component HTML artifacts with modern frontend tooling. | upstream |
+| `webapp-testing` | Interact with and test local web applications using Playwright. | upstream |
+| `workstation` | Offload heavy builds, tests and GPU jobs to a more powerful SSH host. | repo |
 
-```sh
-pip install -r requirements.txt        # Python deps
-python3 skills/<skill>/scripts/<script>.py --help
+The Origin column is this table's own annotation, not a skill frontmatter
+field. `upstream` means the skill is vendored from a third-party repository
+under its own license; see [docs/provenance.md](docs/provenance.md) for the
+per-skill source and license. `repo` means it was written here.
+
+Skills marked upstream keep their original `LICENSE.txt` or `LICENSE` next to
+the skill. Do not strip those files when copying a skill elsewhere.
+
+## Plugins
+
+**`hierarchy-guard`** — an OpenCode plugin that reads the permission and
+subagent calls and enforces two policies: which models a given agent may run
+on, and how deep delegation may go. It fails closed: an unknown agent, an
+unresolvable model, or a dispatch whose target cannot be verified is blocked
+rather than allowed. See [plugins/hierarchy-guard/README.md](plugins/hierarchy-guard/README.md).
+
+**`tailshare`** — rewrites loopback URLs (`localhost`, `127.0.0.1`, `0.0.0.0`,
+`::1`) in a reply so you do not hand someone an address only you can reach. It
+expects a `tailshare` CLI on `PATH`; this repo does not ship that CLI, and
+without it the plugin reports the URL as local instead of inventing a public
+one.
+
+Both plugins are plain ESM modules; `npm run check` syntax-checks them.
+
+## Docs
+
+| File | Contents |
+| --- | --- |
+| [AGENTS.md](AGENTS.md) | The global rules themselves: communication, verification, delegation depth, git workflow, escalation. |
+| [docs/hierarchy-model.md](docs/hierarchy-model.md) | How the planning/implementation/review agents are meant to divide work, and what the guard can and cannot enforce. |
+| [docs/mcp-integrations.md](docs/mcp-integrations.md) | Notes on wiring MCP servers (remote and local) and the trade-offs of each. |
+| [docs/token-budget.md](docs/token-budget.md) | What costs context, the current measured numbers, and the enforced budgets. |
+| [docs/provenance.md](docs/provenance.md) | Where each vendored skill came from, and what is deliberately not published here. |
+
+## Checks
+
+These run offline. Nothing installs a dependency; Node and Python are used only
+if present.
+
+```bash
+npm run check          # syntax-check plugins and scripts
+npm test               # plugin and policy tests (node --test)
+npm run test:python    # python tests inside skills/
+npm run test:revert    # revert script against a throwaway HOME
+npm run test:split     # no Windows-executable delta in this change set
+npm run test:notice    # bundled shadcn/ui notice, with a stub pnpm
+npm run budget         # re-measure the token budget
+scripts/check-secrets.sh          # credential-shaped strings
+scripts/check-public-release.sh   # private-context patterns before publishing
 ```
 
-`tesseract` and `pandoc` are system binaries. `beeper` needs the local
-forward and `BEEPER_MCP_TOKEN`, or an SSH-reachable Beeper host for the
-fallback; `workstation` expects an SSH-reachable host. See their `SKILL.md`.
+`test/revert-hierarchy.test.sh` builds a throwaway `HOME` under `mktemp -d` and
+never touches your real config.
 
-## Token budget
+One check is opt-in and not offline: `npm run test:e2e` drives the real
+`opencode` binary against a free model in a stripped `HOME` under
+`/tmp/opencode/hg-e2e`, so it needs `opencode` on `PATH` and network access. It
+is not part of `npm test`.
 
-`scripts/measure-tokens.mjs` reports chars and chars/4 tokens for AGENTS.md,
-each agent system string, skill frontmatter/descriptions, and the scheduled
-prompt. `test/token-budget.test.mjs` enforces the caps (AGENTS.md <= 5200,
-build/monarch <= 1500, sum of systems <= 5100, skill descriptions <= 2000).
-See `docs/token-budget.md`.
+## Revert
 
-## Beeper: HTTP primary, SSH fallback
+`scripts/revert_hierarchy.sh` (bash, Linux) is the revert path this release
+updates and tests. It removes the hierarchy agents and the `build`/`plan`
+overrides from `opencode.json`, then removes the plugin folder and the symlinks
+this repo's installer created. Providers, models and credentials are left
+exactly as they were. It writes a timestamped backup before rewriting a config
+and accepts a dry run.
 
-Beeper Desktop can run on more than one machine; each instance binds
-`127.0.0.1:23373` and mints its own bearer token. The OAuth issuer is
-loopback, so no other host can reach an instance directly. The overlay routes
-to a Beeper host two ways:
-
-- **`beeper` (primary, remote HTTP)** — OpenCode calls
-  `http://127.0.0.1:23373/v0/mcp` with
-  `Authorization: Bearer {env:BEEPER_MCP_TOKEN}` and `oauth: false` (without
-  `oauth: false` OpenCode would start a browser OAuth flow). The loopback URL
-  only works because of a permanent, user-managed forward on the client host,
-  and the endpoint needs the bearer token — it answers 401 without it, and
-  also 401 when the token belongs to a different instance. The endpoint is
-  loopback-only, not a shareable URL.
-- **`beeper_ssh` (fallback, ssh stdio)** — for hosts without that forward or
-  token: `src/beeper-mcp-shim.mjs` runs on the Beeper host, speaks MCP over
-  stdio, and forwards to the local endpoint with the stored bearer token.
-  Tools appear as `beeper_ssh_*` (`tools.beeper_ssh.*`).
-
-Both servers are active by default; to drop the ssh fallback, add
-`"disabled": true` to the `beeper_ssh` entry — v2 exposes `disabled` on remote
-and local MCP servers, not `enabled`.
-
-`BEEPER_MCP_TOKEN` is exported in the environment OpenCode/T3 Code runs under
-(shell profile; for the desktop app a systemd user environment such as
-`~/.config/environment.d/90-beeper.conf`). It is never stored in the repo or
-the live config.
-
-```sh
-npm test        # transport unit tests
-npm run check   # node --check on the shim
+```bash
+curl -fsSL https://raw.githubusercontent.com/VariableThe/agent-kit-public/main/scripts/revert_hierarchy.sh | bash
 ```
 
-Credentials live outside the repo at
-`~/.config/beeper-mcp-shim/credential.json` (mode 600). The shim reads the
-token from `BEEPER_MCP_TOKEN`, disk, or the OAuth flow; it never writes
-secrets to stdout (stdout is the MCP channel) and never logs them.
+To clean a project-local `opencode.json` as well, pass the project path as the
+first argument: `scripts/revert_hierarchy.sh ~/code/my-project`.
 
-## tailshare: tailnet-reachable links
+`scripts/revert_hierarchy.ps1` is unchanged from the previous public release.
+A PowerShell version matching the bash behaviour above is prepared separately
+and is not part of this release: it has not been tested on Windows, so this
+release leaves the existing Windows script and its older behaviour as they
+were.
 
-Every link an agent shares for a local service must work from any device on
-the tailnet, so `localhost` URLs are never reported as the link. `tailshare`
-(a bash + node script, linked to `~/.local/bin/tailshare`) exposes a local
-port with `tailscale serve` and prints the shareable URL:
+## Secrets and local state
 
-```sh
-tailshare url <port> [--path /name] [--port 8443|10000]  # print the URL; never mutates serve config
-tailshare share <port> [--path /name] [--port 8443|10000] # expose, print ONE URL on stdout (rest to stderr)
-tailshare list [--json]                                   # tailscale serve status passthrough
-tailshare unshare <port|path> [--force]                   # remove only this tool's mapping
-tailshare check <url>                                     # 0 = tailnet, 1 = loopback, 2 = public/other
-```
-
-It prefers path-routing under 443 (no extra port in the URL, real TLS),
-falling back to `--https 8443`, then `10000`. Host, suffix, and tailnet IP
-come from `tailscale status --json` at runtime (cached `~/.cache/tailshare/`,
-~1h TTL) and are never hardcoded. When serve-mapping is impossible it prints
-`http://<tailnet-ip>:<port>` and says so; when tailscale itself is
-unavailable it prints `http://127.0.0.1:<port>` with a stderr caveat and
-exits 2.
-
-Tailnet-only: it never enables funnel and never touches the existing 443
-root `/` mapping (removing `/` requires explicit `--force`).
-
-## tailshare plugin (OpenCode tier)
-
-`plugins/tailshare` is the OpenCode plugin tier of the same feature, built
-only on mechanisms the installed runtime supports (verified against the
-`opencode v2.0.29` binary — not the stale V1 `@opencode-ai/plugin` types,
-whose hooks the binary never calls):
-
-- **System-prompt hint.** A `session.hook("context")` (plus `"compaction"`
-  so the guidance survives summaries) appends one short text block: expose
-  the port via `tailshare share <port>` and share the printed URL, never
-  report loopback URLs as the link. Idempotent, one to two lines (it rides
-  every model call).
-- **Tool-result rewrite.** A `tool.hook("execute.after")` rewrites loopback
-  URLs (`localhost`, `127/8`, `0.0.0.0`, `::1`) in **shell tool results
-  only** (an allowlist, so `read`/`write`/`edit`/`patch` file content is
-  never touched). A tailnet URL is emitted **only** when a real, live
-  `tailscale serve` mapping for that port exists (parsed from
-  `tailscale serve status --json`, cached 60s in plugin storage); otherwise
-  the URL is left intact with a `(local-only; run: tailshare share <port>)`
-  annotation — never a fabricated URL.
-
-Free-form assistant prose has no rewrite hook in v2, so it is out of reach
-for the plugin; the `AGENTS.md` rule plus the hint cover it.
-
-**Opt-out:** `TAILSHARE_OFF=1` disables the plugin entirely.
-
-**Fail-safe:** every hook is try/catch-guarded and setup never throws. When
-`tailscale` is missing or serve state is unreadable, the plugin registers
-nothing observable and sessions behave exactly as before.
-
-**Install wiring:** the installer symlinks the whole directory to
-`~/.config/opencode/plugins/tailshare`, which OpenCode auto-discovers — no
-config change. `package.json` declares `@opencode/plugin 2.0.29` (the exact
-installed release) for types, but its `node_modules` must **not** be
-installed inside the plugin directory: the host runtime provides that
-module. Tests live at `test/tailshare-rewrite.test.mjs` and run with the
-repo's usual `npm test`.
-
-## hierarchy enforcement (plugin)
-
-Agent `permissions` in `opencode.base.json` are not self-enforcing: client
-layers (T3 Code, an SDK `session.update({ permissions })`) append
-session-level rules that win under the runtime's last-match-wins
-resolution, which is how read-only agents were observed executing
-shell/edit calls. `plugins/hierarchy-guard` closes that gap: a
-`permission.hook("evaluate")` re-checks the session's agent against its
-configured policy after client rules resolve and forces `deny` when the
-policy denies. It runs after client rules and can only tighten — never
-`deny`/`ask` to `allow`. The permission-less `execute` (Code Mode JS) tool,
-whose sandbox exposes `child_process`, is gated separately: for agents whose
-policy denies shell, its input is replaced with an inert payload (verified:
-the tool then errors with `Code cannot be empty` and runs nothing).
-
-**Opt-out:** `HIERARCHY_GUARD_OFF=1`. **Fail-safe:** missing/malformed
-config or unexpected events leave the session untouched; setup never throws.
-
-**Subagent model routing.** The native OpenCode `subagent` tool picks its child
-model as `input.model ?? agent.model ?? parentSession.model`, so an omitted
-model inherits the parent's paid model. The plugin listens on
-`tool.hook("execute.before")` for that tool and pins bishop/knight inputs to
-their configured free model read from the live config — a corrective pin, not a
-deny (the call proceeds on the pinned model). This is mechanical, but only for
-the native tool.
-
-**Known limitation:** T3 Code's app-owned tools do not fire the OpenCode
-`tool.hook("execute.before")` event (they are not in the opencode binary), so
-agent-kit cannot hard-enforce their child model:
-- native OpenCode `subagent`: explicit `agent` + configured `model`, mechanically
-  pinned by the plugin;
-- T3 `functions.subagent`: explicit `agent` + exact configured `model`,
-  caller/prompt-enforced only;
-- T3 `delegate_task`: explicit `target.providerInstanceId` + `target.model`,
-  caller/prompt-enforced only.
-The build/monarch prompts and `AGENTS.md` require the caller to pass those
-explicit values; only T3's own dispatcher can enforce them server-side.
-Enforcement elsewhere applies wherever the session's agent identity matches a
-configured agent — hence the build/monarch prompts instruct: when delegating via
-the native subagent tool, pass the intended worker as the tool's `agent`
-parameter (`bishop` planning, `knight` implementation, `mercenary` free
-fallback).
-
-Details in `plugins/hierarchy-guard/README.md`; unit tests at
-`test/hierarchy-guard-policy.test.mjs` (`npm test`); live-binary harness at
-`test/hierarchy-guard-e2e.sh` (needs network + `opencode`, not in `npm test`).
-
-## Secrets policy
-
-Never commit secrets. Local secrets stay out of the repo:
-
-- `service.json` (from `service.json.example`, gitignored),
-- `~/.local/share/opencode/auth.json` and other `auth.json` files,
-- the Beeper token at `~/.config/beeper-mcp-shim/credential.json`.
-
-`bash scripts/check-secrets.sh` scans tracked files for token-shaped
-patterns and exits non-zero on a hit.
-
-`bash scripts/check-public-release.sh` is the second half of the release
-gate: it looks for private context a secret scanner misses (absolute home
-directories, tailnet and RFC1918 addresses, personal mail addresses) and
-for credential files that were committed by accident. Extra literal terms
-(one maintainer's internal host names, account names, private domains) live
-in the gitignored `scripts/private-context.local.txt`, one term per line, so
-the gate itself stays publishable.
-
-## Git workflow
-
-Feature branches, Conventional Commits, PRs only — never direct to `main`.
-Run `npm test`, `npm run check`, `bash scripts/check-secrets.sh` and
-`bash scripts/check-public-release.sh` before opening a PR.
+- No credentials, tokens, account ids or machine paths belong in this repo.
+- `scripts/check-secrets.sh` scans tracked files for credential-shaped strings
+  and prints redacted matches only.
+- `scripts/check-public-release.sh` scans for private-context patterns. Extra
+  project-specific needles can go in `scripts/private-context.local.txt`, which
+  is gitignored, so the patterns stay local.
+- Skills that talk to a service expect their own local config (for example a
+  token file under `~/.config/`); they read it at run time and never carry it
+  here.
 
 ## License
 
-MIT — see `LICENSE`. The `beeper-mcp-shim.mjs` bridge is part of this repo.
+The repository's own files are MIT licensed (see [LICENSE](LICENSE)). Vendored
+skills keep their upstream license and attribution — Apache-2.0 for the
+Anthropic-authored skills, MIT for others; see
+[docs/provenance.md](docs/provenance.md).
