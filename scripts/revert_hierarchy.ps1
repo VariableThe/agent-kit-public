@@ -4,16 +4,16 @@
 
 .DESCRIPTION
   Removes the hierarchy plugin setup and reverts to normal plan/build:
-    - hierarchy agents (monarch, bishop, knight, mercenary, witch, mage,
-      grand-bishop, knight-commander) are dropped from the config
+    - hierarchy agents (monarch, bishop, knight, mercenary, p8-worker, witch,
+      mage, grand-bishop, knight-commander) are dropped from the config
     - the build and plan overrides are removed, so opencode's built-in
       plan/build agents are used again
+    - the p8-agent / p8-agent-fast providers and the pinned p8 model are
+      dropped when the private p8 key file is missing (that provider block is
+      what usually leaves a fresh public-repo install unable to start)
     - the hierarchy-guard plugin folder and the installer symlinks/junctions
       are removed
     - a project-local opencode.json is cleaned too when -Project is given
-
-  It does not touch provider blocks, models or credentials: only agent entries
-  and the symlinks this repo's installer creates.
 
   Every file it rewrites is backed up first: <file>.bak-<timestamp>-pre-revert
 
@@ -43,9 +43,10 @@ $onWindows = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::W
 $configDir  = Join-Path $UserHome ".config/opencode"
 $configFile = Join-Path $configDir "opencode.json"
 $pluginDir  = Join-Path $configDir "plugins"
+$p8KeyFile  = Join-Path $configDir "secrets/p8-api-key"
 
 $hierarchyAgents = @(
-  "monarch", "bishop", "knight", "mercenary",
+  "monarch", "bishop", "knight", "mercenary", "p8-worker",
   "witch", "mage", "grand-bishop", "knight-commander"
 )
 
@@ -125,6 +126,23 @@ function Clean-OpencodeConfig([string]$file) {
     }
   }
 
+  # The p8 providers need a private key file; without it opencode cannot start.
+  if (-not (Test-Path -LiteralPath $p8KeyFile)) {
+    if ($null -ne $config.providers) {
+      foreach ($provider in @("p8-agent", "p8-agent-fast")) {
+        if ($config.providers.PSObject.Properties.Name -contains $provider) {
+          $config.providers.PSObject.Properties.Remove($provider)
+          Write-Step "removed provider '$provider' (no p8 key at $p8KeyFile)"
+        }
+      }
+    }
+    $pinnedModel = $config.model
+    if ($pinnedModel -is [string] -and $pinnedModel -like "p8-agent*") {
+      $config.PSObject.Properties.Remove("model")
+      Write-Step "removed pinned model '$pinnedModel'"
+    }
+  }
+
   if ($DryRun) { Write-Step "would rewrite : $file"; return }
   $json = $config | ConvertTo-Json -Depth 100
   # UTF-8 without BOM: JSON.parse on the opencode side chokes on a BOM.
@@ -147,7 +165,8 @@ try {
     (Join-Path $configDir "cli.json"),
     (Join-Path $UserHome ".local/bin/beeper-mcp-shim"),
     (Join-Path $UserHome ".local/bin/tailshare"),
-    (Join-Path $pluginDir "tailshare")
+    (Join-Path $pluginDir "tailshare"),
+    (Join-Path $pluginDir "budget-guard")
   )) {
     if (Test-IsLink $link) { Remove-LinkOrFolder $link "installer link" }
   }
@@ -157,17 +176,7 @@ try {
     foreach ($skill in Get-ChildItem -LiteralPath $skillsDir -Force -ErrorAction SilentlyContinue) {
       if (-not (Test-IsLink $skill.FullName)) { continue }
       $target = ($skill.Target -join " ")
-      # Only symlinks pointing into an agent-kit checkout, identified by its own
-      # installer files. A lookalike path (my-agent-kit-notes/skills/...) is left
-      # alone rather than matched by name.
-      $idx = $target.LastIndexOf("/skills/")
-      if ($idx -lt 0) { $idx = $target.LastIndexOf("\skills\") }
-      if ($idx -lt 0) { continue }
-      $repoRoot = $target.Substring(0, $idx)
-      $hasInstaller = Test-Path -LiteralPath (Join-Path $repoRoot "install.sh")
-      $hasRules = Test-Path -LiteralPath (Join-Path $repoRoot "AGENTS.md")
-      $isCheckout = $hasInstaller -and $hasRules
-      if ($isCheckout) {
+      if ($target -like "*agent-kit*") {
         if ($DryRun) { Write-Step "would remove skill link : $($skill.FullName)"; continue }
         Remove-LinkOrFolder $skill.FullName "skill link"
       }

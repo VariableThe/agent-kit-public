@@ -12,6 +12,7 @@
     "test": "node --test test/*.test.mjs skills/beeper-bot/test/*.test.mjs",
     "test:python": "bash scripts/test-python.sh",
     "test:revert": "bash test/revert-hierarchy.test.sh",
+    "test:split": "bash test/windows-split.test.sh",
     "test:notice": "bash test/web-artifacts-notice.test.sh",
     "budget": "node scripts/measure-tokens.mjs",
     "test:e2e": "bash test/hierarchy-guard-e2e.sh"

@@ -146,6 +146,7 @@ npm run check          # syntax-check plugins and scripts
 npm test               # plugin and policy tests (node --test)
 npm run test:python    # python tests inside skills/
 npm run test:revert    # revert script against a throwaway HOME
+npm run test:split     # no Windows-executable delta in this change set
 npm run test:notice    # bundled shadcn/ui notice, with a stub pnpm
 npm run budget         # re-measure the token budget
 scripts/check-secrets.sh          # credential-shaped strings
@@ -162,23 +163,25 @@ is not part of `npm test`.
 
 ## Revert
 
-`scripts/revert_hierarchy.sh` (bash) and `scripts/revert_hierarchy.ps1`
-(PowerShell) undo the installer and the hierarchy agent entries: they remove
-the hierarchy agents and the `build`/`plan` overrides from `opencode.json`,
-then remove the plugin folder and the symlinks this repo's installer created.
-Providers, models and credentials are left exactly as they were. Both write a
-timestamped backup before rewriting a config, and both accept a dry run.
+`scripts/revert_hierarchy.sh` (bash, Linux) is the revert path this release
+updates and tests. It removes the hierarchy agents and the `build`/`plan`
+overrides from `opencode.json`, then removes the plugin folder and the symlinks
+this repo's installer created. Providers, models and credentials are left
+exactly as they were. It writes a timestamped backup before rewriting a config
+and accepts a dry run.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/VariableThe/agent-kit-public/main/scripts/revert_hierarchy.sh | bash
 ```
 
-```powershell
-irm https://raw.githubusercontent.com/VariableThe/agent-kit-public/main/scripts/revert_hierarchy.ps1 | iex
-```
-
 To clean a project-local `opencode.json` as well, pass the project path as the
-first argument (bash: `scripts/revert_hierarchy.sh ~/code/my-project`).
+first argument: `scripts/revert_hierarchy.sh ~/code/my-project`.
+
+`scripts/revert_hierarchy.ps1` is unchanged from the previous public release.
+A PowerShell version matching the bash behaviour above is prepared separately
+and is not part of this release: it has not been tested on Windows, so this
+release leaves the existing Windows script and its older behaviour as they
+were.
 
 ## Secrets and local state
 
