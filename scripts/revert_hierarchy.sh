@@ -7,12 +7,13 @@
 #   bash revert_hierarchy.sh [projdir]  # also cleans <projdir>/opencode.json
 #
 # What it removes:
-#   - hierarchy agents (monarch, bishop, knight, mercenary, p8-worker, witch,
-#     mage, grand-bishop, knight-commander) from the global config
-#   - the hierarchy-guard plugin link and the other installer symlinks
-#   - the p8-agent / p8-agent-fast providers, when the private p8 key file is
-#     absent (that provider block is what usually leaves a fresh install stuck)
+#   - hierarchy agents (monarch, bishop, knight, mercenary, witch, mage,
+#     grand-bishop, knight-commander) from the global config
+#   - the hierarchy-guard plugin link and the installer symlinks
 #   - hierarchy agents from a project-local opencode.json, when given
+#
+# It does not touch provider blocks, models or credentials: only agent entries
+# and symlinks this repo's installer creates.
 #
 # What it restores:
 #   - build and plan back to plain opencode agents (mode primary, no pinned
@@ -35,7 +36,7 @@ let cfg;
 try { cfg = JSON.parse(fs.readFileSync(p, "utf8")); }
 catch (e) { console.error("not valid JSON, left untouched"); process.exit(1); }
 
-const HIERARCHY = ["monarch","bishop","knight","mercenary","p8-worker","witch","mage","grand-bishop","knight-commander"];
+const HIERARCHY = ["monarch","bishop","knight","mercenary","witch","mage","grand-bishop","knight-commander"];
 for (const key of ["agents","agent"]) {
   const bag = cfg[key];
   if (!bag || typeof bag !== "object") continue;
@@ -46,18 +47,6 @@ for (const key of ["agents","agent"]) {
 }
 if (cfg.agents && Object.keys(cfg.agents).length === 0) delete cfg.agents;
 if (cfg.agent && Object.keys(cfg.agent).length === 0) delete cfg.agent;
-
-// The p8 providers need a private key file. Without it opencode cannot start,
-// which is the usual reason a fresh public-repo install feels "stuck".
-const keyFile = process.env.HOME + "/.config/opencode/secrets/p8-api-key";
-let haveKey = false;
-try { haveKey = fs.existsSync(keyFile); } catch {}
-if (!haveKey && cfg.providers) {
-  delete cfg.providers["p8-agent"];
-  delete cfg.providers["p8-agent-fast"];
-  if (typeof cfg.model === "string" && cfg.model.startsWith("p8-agent")) delete cfg.model;
-  console.log("removed p8-agent providers + pinned model (no p8 key at " + keyFile + ")");
-}
 
 fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n");
 console.log("hierarchy agents removed, build/plan overrides dropped (opencode built-ins apply again)");
@@ -95,8 +84,7 @@ for link in \
   "$HOME/.config/opencode/cli.json" \
   "$HOME/.local/bin/beeper-mcp-shim" \
   "$HOME/.local/bin/tailshare" \
-  "$PLUGIN_DIR/tailshare" \
-  "$PLUGIN_DIR/budget-guard"
+  "$PLUGIN_DIR/tailshare"
 do
   if [ -L "$link" ]; then
     rm -f "$link" && say "removed link: $link"
@@ -108,9 +96,16 @@ for dir in "$HOME/.config/opencode/skills" "$HOME/.agents/skills"; do
   for skill in "$dir"/*; do
     [ -L "$skill" ] || continue
     target="$(readlink "$skill")"
+    # Only symlinks pointing into an agent-kit checkout, identified by its own
+    # installer files. A lookalike path (my-agent-kit-notes/skills/...) is left
+    # alone rather than matched by name.
     case "$target" in
-      *agent-kit*) rm -f "$skill" && say "removed skill link: $skill" ;;
+      */skills/*) repo_root="${target%/skills/*}" ;;
+      *) continue ;;
     esac
+    if [ -f "$repo_root/install.sh" ] && [ -f "$repo_root/AGENTS.md" ]; then
+      rm -f "$skill" && say "removed skill link: $skill"
+    fi
   done
 done
 

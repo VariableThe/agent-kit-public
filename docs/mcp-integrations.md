@@ -5,13 +5,15 @@ Findings for three candidate MCP servers evaluated for the agent-kit repo
 package metadata fetched during research; URLs are cited inline. Where a fact
 could not be verified, it is marked **unverified**.
 
-Repo config schema (from `opencode.base.json`): servers live under
-`mcp.servers.<name>` with `"type": "remote"` + `"url"` for HTTP, or
-`"type": "local"` + a single `"command"` array (executable + args) for stdio.
-Local servers carry env vars under `environment` (not `env`), remote servers
-carry auth under `headers` (e.g. `"Authorization": "Bearer {env:VAR}"`) and an
-`oauth` flag. Host-specific servers belong in `overlays/<role>.json`, never in
-`opencode.base.json` (see `overlays/beeper-client.json` and `install.sh`).
+Config schema: this repo ships no `opencode.json` and no MCP entries — the
+installer leaves your config alone. The snippets below follow OpenCode's own
+schema, so paste them into your config in the place you already use for other
+servers: servers live under `mcp.<name>` with `"type": "remote"` + `"url"` for
+HTTP, or `"type": "local"` + a single `"command"` array (executable + args) for
+stdio. Local servers carry env vars under `environment` (not `env`), remote
+servers carry auth under `headers` (e.g. `"Authorization": "Bearer {env:VAR}"`)
+and an `oauth` flag. Servers that only make sense on one machine belong in a
+per-machine config, not in a shared one.
 
 ---
 
@@ -71,7 +73,7 @@ Two official deployments, plus one community server that is now deprecated.
   `git_reset`, `git_log`, `git_create_branch`, and more. License is in an
   MIT→Apache-2.0 transition (see the repo `LICENSE`).
 
-### 1.3 Config snippet (this repo's schema)
+### 1.3 Config snippet
 
 Remote, OAuth (no secret to store — recommended):
 
@@ -108,13 +110,12 @@ Local Docker, PAT (equivalent, stdio):
 ```
 
 The token `GITHUB_PERSONAL_ACCESS_TOKEN` must be exported in the environment
-OpenCode/T3 runs under, never committed. `gh auth status` on the test host is
-already logged in (scopes `gist, read:org, repo, workflow`), so a PAT can be
-minted to match.
+OpenCode runs under, never committed. Where `gh auth status` is already logged
+in (scopes `gist, read:org, repo, workflow`), a PAT can be minted to match.
 
 **Recommendation: add now.** Official, MIT, no desktop app dependency, huge
 surface (repos/PRs/issues/actions), and both OAuth (no secret) and PAT paths
-work on the test host (`docker` present, `gh` authenticated). Main risk is
+work with only `docker` present and `gh` authenticated. Main risk is
 context bloat from the large tool set — mitigate by pinning toolsets (e.g.
 `GITHUB_TOOLSETS=context,repos,issues,pull_requests`) or adding read-only mode.
 
@@ -163,7 +164,7 @@ proprietary. Community npm package `mcp-server-figma` is dead.**
   2025-05-29 (stale), **no license file**. Narrow surface; the official server
   supersedes it.
 
-### 2.3 Config snippets (this repo's schema)
+### 2.3 Config snippets
 
 Remote (OAuth — no secret):
 
@@ -187,16 +188,16 @@ A community REST-API server would use `"type": "local"` with
 `"command": ["npx", "figma-mcp"]` and `"environment": { "FIGMA_API_KEY": "{env:FIGMA_API_KEY}" }`
 — but this is not recommended over the official server.
 
-**Host prerequisite:** the Figma **desktop app is installed** on the test host
-(`/opt/figma-linux-next`, binary `/usr/bin/figma-linux-next`, config
-`~/.config/figma-linux-next` present), but `command -v figma` is absent (the
-binary is `figma-linux-next`, not `figma`).
+**Host prerequisite:** the Figma **desktop app must be installed**; on Linux
+the binary is usually `figma-linux-next` (config under
+`~/.config/figma-linux-next`), not `figma`, so `command -v figma` can be absent
+while the app is running.
 
 **Recommendation: add behind an overlay.** It is genuinely useful and the
 desktop app is already present, but it is Beta, proprietary, seat-gated (the
 desktop server needs a paid Dev/Full seat; the remote server is rate-limited on
 free tiers), and auth is per-user (OAuth). That makes it host/user-specific, so
-it belongs in an overlay (like `beeper-client`) rather than the base config.
+it belongs in your own host-specific overlay rather than the base config.
 
 ---
 
@@ -242,19 +243,23 @@ requirement for live control.
 
 ### 3.4 Host prerequisites
 
-`command -v resolve` is **absent** and no DaVinci Resolve installation was found
-(`/opt`, `/usr/lib`, app menus all clean). Nothing to connect a server to.
+`command -v resolve` is **absent** where these notes were taken, and no DaVinci
+Resolve installation was found (`/opt`, `/usr/lib`, app menus all clean).
+Nothing to connect a server to.
 
-**Recommendation: defer.** No Resolve is installed on the test host, live
-control requires the paid Studio edition's scripting API, the free-edition
-bridge is explicitly fragile and version-gated, and the purported official
-`ResolveMCP.exe` is unverified. Revisit only if/when Resolve Studio is installed
-on a host and there is a concrete editing-automation need. (No config snippet:
-there is nothing to wire up locally.)
+**Recommendation: defer.** Live control requires the paid Studio edition's
+scripting API, the free-edition bridge is explicitly fragile and version-gated,
+and the purported official `ResolveMCP.exe` is unverified. Revisit only if/when
+Resolve Studio is installed on a host and there is a concrete
+editing-automation need. (No config snippet: there is nothing to wire up
+locally.)
 
 ---
 
-## Host prerequisites (test host)
+## Host prerequisites
+
+The results below come from one machine; re-run the commands on yours before
+assuming any of it.
 
 | Check | Command | Result |
 | --- | --- | --- |
@@ -265,7 +270,7 @@ there is nothing to wire up locally.)
 | DaVinci Resolve installed | filesystem scan | **absent** |
 | Docker | `command -v docker` | present (`/usr/bin/docker`) |
 | GitHub CLI auth | `gh auth status` | logged in (scopes `gist, read:org, repo, workflow`) |
-| `bun` | `command -v bun` | present (`/home/<user>/.bun/bin/bun`) |
+| `bun` | `command -v bun` | present |
 | `npx` | `command -v npx` | present (`/usr/bin/npx`) |
 
 ---
@@ -282,17 +287,15 @@ there is nothing to wire up locally.)
 
 ## Recommended next steps
 
-1. **Add GitHub MCP now** to `opencode.base.json` as the remote OAuth server
+1. **Add GitHub MCP now** to your config as the remote OAuth server
    (`https://api.githubcopilot.com/mcp/`) — no secret required, works on every
    host. Optionally pin toolsets to keep context lean.
 2. **Document the PAT path** for headless automation: reference
    `{env:GITHUB_PERSONAL_ACCESS_TOKEN}` and note the token must be exported in
-   the environment, never committed (it is not covered by `.gitignore`, which
-   only ignores `service.json`, `auth.json`, `pi/key.env`).
-3. **Add Figma behind an overlay** (a new `overlays/figma-client.json`), not the
-   base: wire the remote server (OAuth) and/or the desktop server
-   (`http://127.0.0.1:3845/mcp`, since the desktop app is already installed),
-   and confirm the account has a Dev/Full seat before promising write-to-canvas.
+   the environment, never committed.
+3. **Add Figma only where you need it**: wire the remote server (OAuth) and/or
+   the desktop server (`http://127.0.0.1:3845/mcp`), and confirm the account has
+   a Dev/Full seat before promising write-to-canvas.
 4. **Defer DaVinci Resolve** until Resolve Studio is installed somewhere and a
    concrete editing-automation need exists; then evaluate
    `samuelgursky/davinci-resolve-mcp` (MIT) and re-verify the purported official

@@ -1,4 +1,4 @@
-# Local secrets — create from service.json.example, never commit the real file.
+# Local secrets — never commit the real file.
 service.json
 auth.json
 

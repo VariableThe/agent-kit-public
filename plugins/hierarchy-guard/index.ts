@@ -275,13 +275,14 @@ export default Plugin.define({
       // sandbox exposes require()/child_process. Gate it as shell-equivalent:
       // when the agent's policy denies unconstrained shell, replace the tool
       // input with an inert payload, unless the agent may delegate under a
-      // restricted executor. Verified 2026-10-17 against
-      // v2.0.29: the execute path honors the replacement (the tool errors
-      // with "Code cannot be empty." and no JS runs), while the shell
-      // tool ignores the same mutation — so the permission hook above
-      // stays the enforcer for shell, and this replacement is the
-      // enforcer for execute. Never returns a value; the hook contract
-      // is void and throwing does not block.
+      // restricted executor. In v2.0.29 the execute path honored the
+      // replacement (the call failed before any JS ran) while the shell tool
+      // ignored the same mutation, so the permission hook above stays the
+      // enforcer for shell and this replacement is the enforcer for execute.
+      // That is a per-version observation: re-check it on an upgrade, since a
+      // runtime that ignores the mutation silently degrades this path to
+      // logging only. Never returns a value; the hook contract is void and
+      // throwing does not block.
       await ctx.tool?.hook?.("execute.before", (event: ToolEvent) => {
         let traceAction = typeof event?.tool === "string" ? event.tool : undefined;
         let traceEffect = "allow";

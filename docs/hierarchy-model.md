@@ -93,9 +93,8 @@ everywhere else depth is policy, not enforcement.
 
 **I7 no `ask` in any policy.** The runtime would prompt, and the plugin only
 forces `deny`, so an `ask` rule would leave a live prompt in the path.
-Not enforced by the plugin: `test/hierarchy-guard-config.test.mjs` lints the
-shipped roster and fails if any rule uses `ask`. `ruleEffect` treats an unknown
-or missing effect as `ask`.
+Not enforced by the plugin: linting the roster for `ask` is a config check, not
+a runtime one. `ruleEffect` treats an unknown or missing effect as `ask`.
 
 ## 5. Enforcement matrix
 
@@ -178,79 +177,26 @@ silent downgrade and a silent upgrade are both corrected and logged. Routing
 answers "which model", never "may this run": a paid agent is never blocked on
 model grounds.
 
-## 8. The scheduled daily run
+## 8. Scheduled and unattended runs
 
-Exactly one scheduled task exists: id
-`scheduled-task:83ceb38b-2cb4-42c1-b166-8d475f8a8f98`, title "Daily model
-check", project `example` (`/home/<user>`), `fixed_time` 09:30 local (IST,
-UTC+05:30, so 04:00Z), no weekday filter, `enabled=1`,
-`runtime_mode=full-access`, `interaction_mode=default`, model
-`opencode/deepseek-v4.1-flash-free`. `run_count=4`; the last run, 2026-10-20,
-succeeded.
+A scheduled task starts an ordinary thread and carries no agent field: under T3
+Code that identity is `build`; under another runner it is whatever agent the
+runner selects. Both consequences follow from the rules above, not from the
+schedule:
 
-Revision 3 of the prompt lives in `docs/scheduled-daily-model-check/after.txt`
-(7,790 bytes). The stored task row
-was updated 2026-10-21 and now holds revision 3 (stored prompt is
-byte-identical to `after.txt` modulo the trailing newline).
+- The identity, not the trigger, decides what the run may do. A `build` session
+  derives `delegate`, so it keeps the Code Mode catalog and reaches MCP and the
+  app tools through its children, while its own write and shell stay denied
+  whenever its policy denies them — a permissive `runtime_mode` does not widen
+  the declared policy, because this plugin re-applies it.
+- An unattended run cannot answer a prompt. Keep `ask` out of every policy an
+  unattended session can load, and make each denial a one-line message that
+  reaches the tool result, so the run fails fast instead of waiting.
 
-The task row stores `model_selection_json`, `runtime_mode`,
-`interaction_mode` and `workspace_strategy_json`. There is no agent field: the
-T3 scheduler starts an ordinary T3 thread, and a T3 thread runs `build`. The
-scheduled run's identity is therefore `build`.
-
-Capabilities the run needs, derived from its own prompt, not assumed:
-
-- `read` on the repository.
-- Code Mode under T3, for the allowance docs, the OpenRouter catalogs, the
-  OpenCode usage tools and the Beeper send.
-- Delegation for everything that needs shell or write: `git`,
-  `./install.sh --check`/`--apply`, `npm`, `gh`, Tailscale SSH to your-host,
-  and writing `~/.local/state/agent-kit/model-watch.json`. No write or shell
-  for the parent itself.
-
-Observed on both recorded runs (2026-10-19, 2026-10-20): the parent's own
-`shell` calls (`git status`, `ls`) and its `edit` of `model-watch.json` were
-denied by the plugin with the standard message, and it completed the work
-through 5 native-subagent children on 2026-10-20 and 4 on 2026-10-19. Both runs
-reported "no change" with a correct report. `runtime_mode=full-access` therefore
-does not widen `build` past its declared policy; this plugin is the reason.
-
-Under this model the run keeps working unchanged: `build` derives `delegate`,
-so it keeps the Code Mode catalog under T3, its only route to MCP, fetch and
-Beeper; write and shell stay denied; its children are worker-writers with their
-own capabilities; depth 1 is satisfied because `build` is the root and every
-child is a worker.
-
-Non-interactive safety:
-
-- No agent in the shipped roster uses `ask` (linted by
-  `test/hierarchy-guard-config.test.mjs`), so the run cannot raise a prompt.
-- A denial is a one-line message that reaches the tool result, so a missing
-  capability fails fast instead of blocking.
-- The dispatch rule refuses a target that lacks the required capability, so the
-  run cannot park work on an agent that will sit idle.
-
-Behaviour change: **none**.
-
-| | before | after |
-| --- | --- | --- |
-| parent identity | `build` | `build` |
-| parent write and shell | denied | denied |
-| parent Code Mode | `build` keeps catalog | unchanged |
-| parent delegation | allowed to the seven named workers | unchanged |
-| child write and shell | allowed | unchanged |
-| depth | 1 | 1 |
-
-The only widening on this branch, `monarch` keeping the catalog, does not reach
-this run because T3 threads run `build`.
-
-Pre-existing defect found while writing this, not caused by this work and not
-fixed: the task prompt instructs the parent to run `git`, `./install.sh`, `gh`
-and to write `model-watch.json` itself, all of which are denied, so it works
-around them by delegating. Recommended: rewrite those steps to name the worker
-explicitly and to carry the leaf-worker clause. The schedule lives in T3's
-database, not in this repository, so the fix is an `update_scheduled_task`
-call, deliberately not made here.
+Behaviour change for existing scheduled work: none. A prompt that instructs the
+parent to run shell or write files itself works only through its children; that
+is a prompt fix in the scheduler, not a plugin change, since the schedule lives
+outside this repository.
 
 ## 9. Known gaps and unenforced region
 
@@ -275,7 +221,7 @@ call, deliberately not made here.
 | --- | --- | --- |
 | Capability-derived rules. | Separate rule sets per harness. | Two policies drift. The incident happened because the rule named a harness and an agent instead of a capability. |
 | Root-ness derived from the policy. | A literal orchestrator list. | The literal `["build"]` blocked `monarch`, a primary orchestrator with identical declared rights — a real regression found while writing this model. |
-| `execute` gated by executor capability, not by an agent name. | Neuter every agent the way native sessions are neutered. | It removes Monarch's entire catalog under T3, where the sandbox cannot reach the host, and breaks the scheduled daily task, which has no other route to MCP and the app tools. |
+| `execute` gated by executor capability, not by an agent name. | Neuter every agent the way native sessions are neutered. | It removes an orchestrator's entire catalog under a restricted harness, where the probed sandbox was not observed to reach the host, and breaks an unattended run whose only route to MCP and the app tools is that catalog. |
 | `execute` under a restricted executor is still a bridge with real authority. | Treat the restricted executor as read-only. | Browser, messaging, MCP and the remote sandbox are reachable through it. |
 | Fail open on unreadable or unknown config. | Fail closed on every capability. | A broken config, unknown event shape or new harness must degrade to no extra enforcement; inventing denies would change sessions the config never described. Consequence accepted for every capability except delegation: an unreadable config removes enforcement, but delegation falls closed on the floor (next row). |
 | Delegation fails closed on an unavailable policy. | Degrade to no extra enforcement like every other capability. | Recursion is the failure that produced three generations and a 90-minute hang, while a false deny costs one line and leaves the loop running. The general fail-safe rule is about not inventing denies for capabilities the config did describe; an undeclared identity describes nothing. |
@@ -307,57 +253,44 @@ Behaviour that got narrower, and the rule that justifies it:
 
 ## 11. Compatibility
 
-- **Existing sessions.** No config migration. Every rule above is derived from
-  the current `opencode.json`. The only identities whose behaviour changes are
-  the ones named under Widening and Narrowing.
-- **`plan` shell rule.** Closed on `fix/plan-readonly-shell`: `agents.plan` now
-  declares `shell * deny`, so its derived `execute` is false and a plan session
-  is neutered like an auditor. The gap mattered because Code Mode is not gated by
-  `edit`: a read-only-by-declaration planner still kept the sandbox that can
-  write files.
-- **Branch `feat/delegation-depth-guard`** (204c2dd, unmerged). This branch
-  extends and supersedes its mechanism rather than rebasing it. It keeps its
-  nesting block and its tests; it replaces the literal root list with the
-  policy-derived rule (fixing `monarch`), and adds target validation and routing
-  classes. The depth-guard commit belongs in the same PR as this branch rather
-  than merging separately. The depth-guard branch should not be
-  merged on its own once this exists, because on its own it blocks `monarch`.
-- **Live install.** `~/.config/opencode/plugins/hierarchy-guard` is a symlink to
-  this repository's plugin directory, so the running guard is whatever this
-  branch contains. No `install.sh --apply` is needed for plugin code, and
-  `opencode.json` is unchanged by this work.
+- **Existing sessions.** No config migration: every rule above is derived from
+  the live `opencode.json`, so only the identities named under Widening and
+  Narrowing change behaviour.
+- **`plan` shell rule.** A planner that declares `shell * deny` derives
+  `execute: false` and is neutered like an auditor. The gap matters because Code
+  Mode is not gated by `edit`: a read-only-by-declaration planner otherwise keeps
+  a sandbox that can write files.
+- **Prior branches.** An earlier delegation-depth guard used a literal root list
+  and blocked `monarch`; the policy-derived rule here supersedes that mechanism
+  instead of rebasing it.
+- **Live install.** The installer symlinks the plugin directory into
+  `~/.config/opencode/plugins/hierarchy-guard`, so the running guard is whatever
+  the checkout contains. Plugin code needs no `install.sh --apply`, and
+  `opencode.json` is untouched by it.
 
-## 12. Probe transcript
+## 12. How to reproduce the observations
 
-- T3 Code, 2026-10-20 scheduled run, identity `build`:
-  `hierarchy-guard: agent "build" is not permitted to use "shell" for "git status --short --branch" (rule "shell"/"*")`
-  and
-  `... "edit" for ".local/state/agent-kit/model-watch.json" (rule "edit"/"*")`.
-  Observed. `permission.evaluate` fired and its message reached the tool result.
-- T3 Code, this session, 2026-10-21, identity `build`: `ls -la` and `git status`
-  were refused with the same message shape. Observed. `execute` calls in the same
-  session succeeded, consistent with the restricted-executor rule and with
-  `build` being a delegator. Observed.
-- T3 Code: `delegate_task` and the `t3_thread_*` tools produced no
-  `hierarchy-guard` line and later became unavailable mid-session ("Unknown
-  tool"). Observed that they are not hook-visible; unverified whether an option
-  can switch the child's agent.
-- Native OpenCode v2.1.1: `opencode run --agent bishop ... shell` failed with
-  `Error: Permission denied: shell` and no plugin line; `--agent knight` executed
-  shell successfully with no plugin line. The attribution is therefore
-  unverified: the client process does not export `HIERARCHY_GUARD_TRACE` to the
-  process that runs the hooks. Next command to capture it: run the service under
-  a throwaway `HOME` with `HIERARCHY_GUARD_TRACE=1` in its environment
-  (`test/hierarchy-guard-e2e.sh` already does this), then replay one shell call
-  per agent.
-- Matcher parity: the installed v2.1.1 binary contains `Eb(e,r)` with the same
-  chain as `compilePattern` — backslash normalisation, metachar escaping, `*` to
-  `.*`, `?` to `.`, the trailing `" .*"` to `"(.*)?"` quirk, and `^...$` with the
-  `s` flag. Observed. The exported name changed from `Q_`; semantics did not.
+- **A deny reaches the tool result.** Load a policy that denies `shell` for an
+  agent, run one shell call as that agent, and expect the deny text in the tool
+  result rather than a prompt.
+- **`execute` neutering on a host executor.** Under an agent whose policy denies
+  shell, call `execute`: the tool errors with `Code cannot be empty` and no JS
+  runs.
+- **App-owned tools are not hook-visible.** Call `delegate_task` and the
+  `t3_thread_*` tools and expect no `hierarchy-guard` line. Whether any option
+  can switch the child's agent remains unverified.
+- **Native-path attribution.** `test/hierarchy-guard-e2e.sh` runs the service
+  under a throwaway `HOME` with `HIERARCHY_GUARD_TRACE=1`; replay one shell call
+  per agent there to attribute a decision to the plugin rather than to the
+  client.
+- **Matcher parity.** The installed binary's matcher runs the same chain as
+  `compilePattern`: backslash normalisation, metachar escaping, `*` to `.*`, `?`
+  to `.`, the trailing `" .*"` to `"(.*)?"` quirk, and `^...$` with the `s`
+  flag. `test/hierarchy-guard-policy.test.mjs` pins that behaviour.
 
 ## 13. What to do next
 
-- Capture the native trace with the throwaway-`HOME` method, so the plugin's
+- Capture a native-path trace with the throwaway-`HOME` method, so the plugin's
   decisions on the native path are observed rather than inferred.
-- Probe `delegate_task.target.options` for an agent switch. If there is none,
-  file the upstream request for an `agent` parameter or a `maxDepth` check.
+- Probe `delegate_task.target.options` for an agent switch. Without one, the
+  upstream fix is an `agent` parameter or a `maxDepth` check.

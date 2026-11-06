@@ -1,44 +1,41 @@
 # Token budget
 
-Measured with `scripts/measure-tokens.mjs` (chars and chars/4 tokens).
+Context an agent pays for on every session, measured with
+`scripts/measure-tokens.mjs` (chars and chars/4 tokens).
 
-## Before / after
+## What is measured
 
-| Metric | Before | After |
+| What | Why it matters |
+|---|---|
+| `AGENTS.md` | rides every session's context |
+| each agent `system` string | only when the repo ships `opencode.base.json` |
+| skill frontmatter blocks | the skill catalog is injected on every session |
+| skill descriptions | the part of the catalog an agent actually reads when choosing |
+
+A missing optional input is reported as an empty figure rather than aborting
+the run, so the script works in a repo that carries only rules and skills.
+
+## Current figures
+
+| Metric | Chars | ~Tokens |
 |---|---:|---:|
-| AGENTS.md | 9,044 | 5,189 |
-| build system | 9,451 | 742 |
-| monarch system | 9,451 | 742 |
-| total agent systems | 24,306 | 4,832 |
-| skill descriptions | 4,090 | 1,547 |
-
-Scheduled prompt: revision 1 = 12,351 chars, revision 2 = 13,844 chars,
-revision 3 = 7,859 bytes / 7,855 chars (`docs/scheduled-daily-model-check/after.txt`).
-
-## Per-session estimate
-
-A build session injects AGENTS.md plus the build system prompt:
-before ~18,495 chars (~4,624 tokens), after ~5,931 chars (~1,483 tokens).
-
-A worker session injects AGENTS.md plus the Mercenary system prompt:
-before ~9,603 chars (~2,401 tokens), after ~5,607 chars (~1,402 tokens).
-
-## Moved out of the injected context
-
-Escalation policy, routing, depth, and incident history now live in
-`docs/hierarchy-model.md` instead of being repeated in every system prompt.
-AGENTS.md carries the normative rules once.
+| `AGENTS.md` | 5,112 | 1,278 |
+| skill frontmatter (36 skills) | 13,718 | 3,430 |
+| skill descriptions | 5,592 | 1,398 |
 
 ## Enforced budgets
 
-`test/token-budget.test.mjs` (node:test) asserts:
-- AGENTS.md <= 5,200 chars
-- build and monarch systems <= 1,500 chars each
-- sum of all agent system strings <= 5,000 chars
-- total skill descriptions <= 2,000 chars
+`test/token-budget.test.mjs` (node:test, run by `npm test`) asserts:
+
+- `AGENTS.md` <= 5,200 chars
+- total skill descriptions <= 6,000 chars
+- every `skills/*/SKILL.md` has a `name` and a `description`
+
+The caps are guardrails against slow growth, not targets. Raise one
+deliberately, in the same commit that needs the extra room.
 
 ## Re-measure
 
 ```sh
-node scripts/measure-tokens.mjs
+node scripts/measure-tokens.mjs   # or: npm run budget
 ```

@@ -12,8 +12,10 @@ conflict.
 ## Scripts
 
 - Every script runs as `python3 scripts/<name>.py --help` with zero setup
-  beyond `pip install -r requirements.txt` plus documented system binaries.
-- Stdlib first. New third-party dependency needs a reason in the PR.
+  beyond the dependencies its `SKILL.md` lists (Python packages plus
+  documented system binaries).
+- Stdlib first. A skill that needs a third-party package names it in its own
+  `SKILL.md`; there is no shared requirements file to install.
 - Non-zero exit plus a one-line `Error:` message on failure. Print a short
   summary (`Wrote ...`, `Pages: ...`) on success.
 

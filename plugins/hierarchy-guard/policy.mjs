@@ -161,11 +161,21 @@ export function mayDispatchTo(rules, target) {
 }
 
 /**
- * Which executor the session runs under. The T3 Code harness is a restricted
- * interpreter — it cannot reach the filesystem or spawn a process — so
- * `shouldNeuterExecute` derives its exemption from the agent's declared policy
- * rather than from an agent-name list. Native OpenCode and any harness we do not
- * recognise is a host executor, where Code Mode reaches the filesystem.
+ * Which executor the session runs under. Classification is by environment
+ * variable prefix (`isT3CodeHarness`), never by agent name: a session carrying
+ * a non-empty `T3CODE_*` key is classified `restricted`, everything else —
+ * native OpenCode and any harness this plugin does not recognise — is
+ * classified `host`.
+ *
+ * The classifier only says which sandbox the session claims to be in. What a
+ * restricted sandbox can actually reach was observed on one harness build: Code
+ * Mode there exposed no `require`/`process`, dynamic `import` was unsupported,
+ * `fetch` refused `file:` URLs, and an `execSync` write left no marker file.
+ * Those are observations of one harness build, not a guarantee; re-check them
+ * when the harness or the runtime changes. The consequence used here is narrower
+ * and policy-driven anyway: under `restricted`, `shouldNeuterExecute` derives
+ * the exemption from the agent's declared delegation rights rather than
+ * blanking a catalog that the agent's own policy allows it to use.
  */
 export function resolveExecutor(env) {
   return isT3CodeHarness(env) ? "restricted" : "host";
@@ -241,14 +251,16 @@ const T3CODE_ENV_PREFIX = "T3CODE_";
  * The plugin no longer reads this list.
  *
  * Historically: agents exempt from execute-tool neutering, and ONLY while
- * running under the T3 Code harness. `build` is Monarch, the primary T3 Code
- * orchestrator: Code Mode is its only route to the browser tools, the MCP
- * servers and the T3 Code app tools, so neutering it removes those catalogs
- * outright. The exemption was safe because the harness sandbox was probed on
- * 2026-10-17 and cannot reach the filesystem or spawn a process
- * (`require`/`process` undefined, dynamic `import` unsupported, `fetch` rejects
- * `file:` URLs, an `execSync` write created no marker file) — there is nothing
- * to gate there.
+ * running under a restricted host harness. `build` is the primary orchestrator
+ * there, and Code Mode is its only route to the browser tools, the MCP servers
+ * and the host app's tools, so neutering it removes those catalogs outright.
+ * The exemption rested on observations of one harness build — no
+ * `require`/`process`, no dynamic `import`, `file:` URLs refused by `fetch`, an
+ * `execSync` write leaving no marker file — which is evidence that the
+ * filesystem and process escapes did not work there, not a proof that no
+ * sandbox of that shape can reach them. That is why the live rule is
+ * capability-derived and why it also bounds the catalog rather than treating
+ * the sandbox as safe.
  */
 const EXECUTE_NEUTER_EXEMPT_AGENTS = ["build"];
 
